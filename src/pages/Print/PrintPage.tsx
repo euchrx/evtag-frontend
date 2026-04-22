@@ -12,7 +12,7 @@ export function PrintPage() {
   const [lot, setLot] = useState('');
   const [showQr, setShowQr] = useState(true);
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [, setIsLoading] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
   const { showToast } = useToast();

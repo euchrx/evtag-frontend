@@ -30,25 +30,29 @@ export function KitchenPage() {
     try {
       setIsProcessing(true);
 
-      const { data } = await api.get(`/labels/prints/qr/${value}`);
+      // 🔥 ENDPOINT CORRETO
+      const { data } = await api.get(
+        `/labels/prints/qr/${value}/mobile`,
+      );
 
       setItemName(data.labelItem.name);
 
-      if (data.status !== 'ACTIVE') {
-        setStatus('consumed');
+      // 🔥 VALIDAÇÃO CENTRALIZADA NO BACKEND
+      if (!data.canConsume) {
+        if (data.isExpired) {
+          setStatus('expired');
+        } else if (data.status === 'CONSUMED') {
+          setStatus('consumed');
+        } else {
+          setStatus('error');
+        }
+
         playError();
         return;
       }
 
-      if (new Date(data.expiresAt) < new Date()) {
-        setStatus('expired');
-        playError();
-        return;
-      }
-
-      await api.patch(`/labels/prints/${data.id}/status`, {
-        status: 'CONSUMED',
-      });
+      // 🔥 CONSUMO COM AUDITORIA (DEVICE + USER)
+      await api.patch(`/labels/prints/${data.id}/consume`);
 
       setStatus('valid');
       playSuccess();
@@ -78,6 +82,7 @@ export function KitchenPage() {
   function handleChange(value: string) {
     setCode(value);
 
+    // 🔥 MELHOR LIMITE (evita leituras incompletas)
     if (value.length > 10) {
       handleScan(value);
     }

@@ -11,6 +11,7 @@ import { SuperAdminCompanySelector } from './components/SuperAdminCompanySelecto
 import { CompaniesPage } from './pages/Companies/CompaniesPage';
 import { UsersPage } from './pages/Users/UsersPage';
 import { KitchenPage } from './pages/Kitchen/KitchenPage';
+import { DevicesPage } from './pages/Devices/DevicesPage';
 
 type Tab =
   | 'dashboard'
@@ -21,6 +22,7 @@ type Tab =
   | 'scan'
   | 'companies'
   | 'users'
+  | 'devices'
   | 'kitchen';
 
 function App() {
@@ -153,6 +155,7 @@ function App() {
             <TabBtn tab={tab} setTab={setTab} value="print">Impressão</TabBtn>
             <TabBtn tab={tab} setTab={setTab} value="history">Histórico</TabBtn>
             <TabBtn tab={tab} setTab={setTab} value="scan">Conferência</TabBtn>
+            <TabBtn tab={tab} setTab={setTab} value="devices">Dispositivos</TabBtn>
 
             {user?.role === 'SUPER_ADMIN' && (
               <TabBtn tab={tab} setTab={setTab} value="companies">
@@ -179,6 +182,7 @@ function App() {
         {tab === 'scan' && <ScanPage />}
         {tab === 'companies' && <CompaniesPage />}
         {tab === 'users' && <UsersPage />}
+        {tab === 'devices' && <DevicesPage />}
       </main>
     </div>
   );
