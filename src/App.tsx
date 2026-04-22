@@ -10,6 +10,7 @@ import { useAuth } from './contexts/AuthContext';
 import { SuperAdminCompanySelector } from './components/SuperAdminCompanySelector';
 import { CompaniesPage } from './pages/Companies/CompaniesPage';
 import { UsersPage } from './pages/Users/UsersPage';
+import { KitchenPage } from './pages/Kitchen/KitchenPage';
 
 type Tab =
   | 'dashboard'
@@ -19,7 +20,8 @@ type Tab =
   | 'history'
   | 'scan'
   | 'companies'
-  | 'users';
+  | 'users'
+  | 'kitchen';
 
 function App() {
   const {
@@ -41,6 +43,13 @@ function App() {
 
     return user.company?.name || 'Empresa';
   }, [user, selectedCompanyId]);
+
+  // 🔥 ROTA DIRETA
+  const path = window.location.pathname;
+
+  if (path === '/kitchen') {
+    return <KitchenPage />;
+  }
 
   if (isLoading) {
     return (
@@ -71,40 +80,31 @@ function App() {
               Selecione uma empresa
             </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Como SUPER_ADMIN, você precisa escolher uma empresa para acessar
-              dashboard, categorias, itens, impressão, histórico e conferência.
+              Como SUPER_ADMIN, você precisa escolher uma empresa.
             </p>
           </div>
 
           <div className="space-y-4">
             <SuperAdminCompanySelector />
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              O sistema enviará automaticamente o contexto da empresa nas
-              requisições após a seleção.
-            </div>
-
             <div className="flex gap-3">
               <button
-                type="button"
                 onClick={() => setTab('companies')}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="rounded-xl border px-4 py-2 text-sm"
               >
-                Gerenciar empresas
+                Empresas
               </button>
 
               <button
-                type="button"
                 onClick={() => setTab('users')}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                className="rounded-xl border px-4 py-2 text-sm"
               >
-                Gerenciar usuários
+                Usuários
               </button>
 
               <button
-                type="button"
                 onClick={logout}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white"
               >
                 Sair
               </button>
@@ -138,9 +138,8 @@ function App() {
               <SuperAdminCompanySelector />
 
               <button
-                type="button"
                 onClick={logout}
-                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white"
               >
                 Sair
               </button>
@@ -148,105 +147,24 @@ function App() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setTab('dashboard')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tab === 'dashboard'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              Dashboard
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTab('categories')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tab === 'categories'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              Categorias
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTab('items')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tab === 'items'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              Itens
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTab('print')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tab === 'print'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              Impressão
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTab('history')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tab === 'history'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              Histórico
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTab('scan')}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tab === 'scan'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-              }`}
-            >
-              Conferência
-            </button>
+            <TabBtn tab={tab} setTab={setTab} value="dashboard">Dashboard</TabBtn>
+            <TabBtn tab={tab} setTab={setTab} value="categories">Categorias</TabBtn>
+            <TabBtn tab={tab} setTab={setTab} value="items">Itens</TabBtn>
+            <TabBtn tab={tab} setTab={setTab} value="print">Impressão</TabBtn>
+            <TabBtn tab={tab} setTab={setTab} value="history">Histórico</TabBtn>
+            <TabBtn tab={tab} setTab={setTab} value="scan">Conferência</TabBtn>
 
             {user?.role === 'SUPER_ADMIN' && (
-              <button
-                type="button"
-                onClick={() => setTab('companies')}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  tab === 'companies'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                }`}
-              >
+              <TabBtn tab={tab} setTab={setTab} value="companies">
                 Empresas
-              </button>
+              </TabBtn>
             )}
 
             {(user?.role === 'SUPER_ADMIN' ||
               user?.role === 'COMPANY_ADMIN') && (
-              <button
-                type="button"
-                onClick={() => setTab('users')}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                  tab === 'users'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                }`}
-              >
+              <TabBtn tab={tab} setTab={setTab} value="users">
                 Usuários
-              </button>
+              </TabBtn>
             )}
           </div>
         </div>
@@ -263,6 +181,21 @@ function App() {
         {tab === 'users' && <UsersPage />}
       </main>
     </div>
+  );
+}
+
+function TabBtn({ tab, setTab, value, children }: any) {
+  return (
+    <button
+      onClick={() => setTab(value)}
+      className={`rounded-lg px-4 py-2 text-sm font-medium ${
+        tab === value
+          ? 'bg-slate-900 text-white'
+          : 'bg-slate-200 text-slate-700'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

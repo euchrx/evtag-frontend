@@ -1,127 +1,45 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { api } from '../../services/api';
-
-type Category = {
-  id: string;
-  name: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LabelItem = {
-  id: string;
-  name: string;
-  categoryId: string;
-  category: Category;
-  itemType: 'INPUT' | 'PRODUCTION' | 'FRACTIONED';
-  defaultShelfLifeHours: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+import { useToast } from '../../contexts/ToastContext';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 type LabelPrintStatus = 'ACTIVE' | 'EXPIRED' | 'DISCARDED' | 'CONSUMED';
 
-type LabelPrint = {
-  id: string;
-  labelItemId: string;
-  preparedAt: string;
-  expiresAt: string;
-  quantity: number | null;
-  weight: string | null;
-  lot: string | null;
-  qrCode: string;
-  status: LabelPrintStatus;
-  createdAt: string;
-  updatedAt: string;
-  labelItem: LabelItem;
-};
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('pt-BR');
-}
-
-function getStatusLabel(status: LabelPrintStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'Ativa';
-    case 'EXPIRED':
-      return 'Vencida';
-    case 'DISCARDED':
-      return 'Descartada';
-    case 'CONSUMED':
-      return 'Consumida';
-    default:
-      return status;
-  }
-}
-
-function getStatusClasses(status: LabelPrintStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'EXPIRED':
-      return 'bg-amber-100 text-amber-700';
-    case 'DISCARDED':
-      return 'bg-red-100 text-red-700';
-    case 'CONSUMED':
-      return 'bg-blue-100 text-blue-700';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
-}
-
 export function ScanPage() {
   const [qrCode, setQrCode] = useState('');
-  const [print, setPrint] = useState<LabelPrint | null>(null);
+  const [print, setPrint] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isScanLocked, setIsScanLocked] = useState(false);
   const [lastScannedCode, setLastScannedCode] = useState('');
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const [scanResult, setScanResult] = useState<'success' | 'error' | null>(null);
+
   const unlockTimeoutRef = useRef<number | null>(null);
+
+  const { showToast } = useToast();
 
   const canSearch = useMemo(() => qrCode.trim().length > 0, [qrCode]);
 
-  const playBeep = useCallback(() => {
+  function playBeep(type: 'success' | 'error' = 'success') {
     try {
-      const AudioCtx =
-        window.AudioContext ||
-        (
-          window as typeof window & {
-            webkitAudioContext?: typeof AudioContext;
-          }
-        ).webkitAudioContext;
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-      if (!AudioCtx) return;
+      osc.type = 'sine';
+      osc.frequency.value = type === 'success' ? 900 : 200;
 
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioCtx();
-      }
+      gain.gain.value = 0.1;
 
-      const context = audioContextRef.current;
-      const oscillator = context.createOscillator();
-      const gainNode = context.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, context.currentTime);
-
-      gainNode.gain.setValueAtTime(0.001, context.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.12);
-
-      oscillator.connect(gainNode);
-      gainNode.connect(context.destination);
-
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.12);
-    } catch (error) {
-      console.error('Não foi possível reproduzir o beep:', error);
-    }
-  }, []);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch {}
+  }
 
   const releaseScanLock = useCallback(() => {
     if (unlockTimeoutRef.current) {
@@ -130,27 +48,29 @@ export function ScanPage() {
 
     unlockTimeoutRef.current = window.setTimeout(() => {
       setIsScanLocked(false);
-    }, 1800);
+    }, 1500);
   }, []);
 
   async function handleSearch(value?: string) {
     const code = (value ?? qrCode).trim();
-
     if (!code) return;
 
     try {
       setIsLoading(true);
 
-      const response = await api.get<LabelPrint>(
-        `/labels/prints/qr/${encodeURIComponent(code)}`,
-      );
+      const res = await api.get(`/labels/prints/qr/${encodeURIComponent(code)}`);
 
+      setPrint(res.data);
       setQrCode(code);
-      setPrint(response.data);
+
+      setScanResult('success');
+      playBeep('success');
     } catch (error) {
-      console.error('Erro ao buscar etiqueta:', error);
-      alert('Etiqueta não encontrada.');
       setPrint(null);
+      setScanResult('error');
+      playBeep('error');
+
+      showToast('Etiqueta não encontrada', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -164,21 +84,21 @@ export function ScanPage() {
 
       await api.patch(`/labels/prints/${print.id}/status`, { status });
 
-      const response = await api.get<LabelPrint>(
-        `/labels/prints/qr/${encodeURIComponent(print.qrCode)}`,
+      const res = await api.get(
+        `/labels/prints/qr/${encodeURIComponent(print.qrCode)}`
       );
 
-      setPrint(response.data);
+      setPrint(res.data);
+      showToast('Status atualizado', 'success');
     } catch (error) {
-      console.error('Erro ao atualizar etiqueta:', error);
-      alert('Não foi possível atualizar o status.');
+      showToast(getErrorMessage(error, 'Erro ao atualizar'), 'error');
     } finally {
       setIsUpdating(false);
     }
   }
 
-  async function handleDetectedCode(rawValue?: string) {
-    const value = rawValue?.trim();
+  async function handleDetectedCode(raw?: string) {
+    const value = raw?.trim();
 
     if (!value || isScanLocked) return;
     if (value === lastScannedCode) return;
@@ -186,191 +106,119 @@ export function ScanPage() {
     setIsScanLocked(true);
     setLastScannedCode(value);
     setQrCode(value);
-    playBeep();
 
     await handleSearch(value);
     releaseScanLock();
   }
 
-  function handleAllowNewScan() {
-    setIsScanLocked(false);
-    setLastScannedCode('');
+  function resetScan() {
     setPrint(null);
     setQrCode('');
+    setScanResult(null);
+    setLastScannedCode('');
+    setIsScanLocked(false);
+  }
+
+  function format(date: string) {
+    return new Date(date).toLocaleString('pt-BR');
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          Conferência por QR Code
-        </h1>
-        <p className="text-sm text-slate-600">
-          Consulte a etiqueta e atualize o status operacional.
-        </p>
-      </div>
+      <h1 className="text-2xl font-bold">Conferência</h1>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-          <input
-            value={qrCode}
-            onChange={(e) => setQrCode(e.target.value)}
-            placeholder="Cole ou bip o QR Code"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-          />
-
-          <button
-            type="button"
-            onClick={() => handleSearch()}
-            disabled={isLoading || !canSearch}
-            className="rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
-          >
-            {isLoading ? 'Buscando...' : 'Buscar'}
-          </button>
+      {/* STATUS VISUAL GRANDE */}
+      {scanResult && (
+        <div
+          className={`text-center text-lg font-bold p-4 rounded-xl ${
+            scanResult === 'success'
+              ? 'bg-emerald-100 text-emerald-700'
+              : 'bg-red-100 text-red-700'
+          }`}
+        >
+          {scanResult === 'success' ? 'ETIQUETA OK' : 'ETIQUETA NÃO ENCONTRADA'}
         </div>
+      )}
 
-        <div className="mt-4 flex flex-wrap gap-3">
+      <div className="grid gap-4">
+        <input
+          value={qrCode}
+          onChange={(e) => setQrCode(e.target.value)}
+          placeholder="QR Code"
+          className="border p-2 rounded"
+        />
+
+        <button
+          onClick={() => handleSearch()}
+          disabled={!canSearch || isLoading}
+          className="bg-slate-900 text-white p-2 rounded"
+        >
+          {isLoading ? 'Buscando...' : 'Buscar'}
+        </button>
+
+        <div className="flex gap-2">
           <button
-            type="button"
-            onClick={() => setIsScannerOpen((prev) => !prev)}
-            className="rounded-xl bg-slate-200 px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-300"
+            onClick={() => setIsScannerOpen((p) => !p)}
+            className="bg-slate-200 px-3 py-2 rounded"
           >
             {isScannerOpen ? 'Fechar câmera' : 'Abrir câmera'}
           </button>
 
           <button
-            type="button"
-            onClick={handleAllowNewScan}
-            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+            onClick={resetScan}
+            className="bg-emerald-600 text-white px-3 py-2 rounded"
           >
-            Liberar nova leitura
+            Nova leitura
           </button>
         </div>
+      </div>
 
-        {isScannerOpen ? (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
-            <Scanner
-              formats={['qr_code']}
-              constraints={{ facingMode: 'environment' }}
-              onScan={(detectedCodes) => {
-                const value = detectedCodes?.[0]?.rawValue;
-                void handleDetectedCode(value);
-              }}
-              onError={(error) => {
-                console.error('Erro no scanner:', error);
-              }}
-            />
-          </div>
-        ) : null}
-
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          <span
-            className={`rounded-full px-2.5 py-1 font-semibold ${
-              isScannerOpen
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-slate-100 text-slate-700'
-            }`}
-          >
-            {isScannerOpen ? 'Câmera ativa' : 'Câmera desligada'}
-          </span>
-
-          <span
-            className={`rounded-full px-2.5 py-1 font-semibold ${
-              isScanLocked
-                ? 'bg-amber-100 text-amber-700'
-                : 'bg-slate-100 text-slate-700'
-            }`}
-          >
-            {isScanLocked ? 'Leitura temporariamente travada' : 'Leitura liberada'}
-          </span>
+      {isScannerOpen && (
+        <div className="rounded-xl overflow-hidden">
+          <Scanner
+            formats={['qr_code']}
+            constraints={{ facingMode: 'environment' }}
+            onScan={(codes) => {
+              const value = codes?.[0]?.rawValue;
+              void handleDetectedCode(value);
+            }}
+          />
         </div>
-      </section>
+      )}
 
-      {print ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="space-y-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                {print.labelItem.name}
-              </h2>
-              <p className="text-sm text-slate-500">
-                {print.labelItem.category.name}
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-semibold uppercase text-slate-500">
-                  Preparo
-                </div>
-                <div className="text-sm text-slate-900">
-                  {formatDateTime(print.preparedAt)}
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-semibold uppercase text-slate-500">
-                  Validade
-                </div>
-                <div className="text-sm text-slate-900">
-                  {formatDateTime(print.expiresAt)}
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-semibold uppercase text-slate-500">
-                  Lote
-                </div>
-                <div className="text-sm text-slate-900">
-                  {print.lot ?? '-'}
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-slate-50 p-3">
-                <div className="text-xs font-semibold uppercase text-slate-500">
-                  Status
-                </div>
-                <div className="mt-1">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClasses(print.status)}`}
-                  >
-                    {getStatusLabel(print.status)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-semibold uppercase text-slate-500">
-                QR Code
-              </div>
-              <div className="mt-1 break-all text-sm text-slate-900">
-                {print.qrCode}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => updateStatus('CONSUMED')}
-                disabled={isUpdating}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
-              >
-                Marcar como consumida
-              </button>
-
-              <button
-                type="button"
-                onClick={() => updateStatus('DISCARDED')}
-                disabled={isUpdating}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-60"
-              >
-                Marcar como descartada
-              </button>
-            </div>
+      {print && (
+        <div className="border rounded-xl p-4 space-y-3">
+          <div className="text-xl font-bold">{print.labelItem.name}</div>
+          <div className="text-sm text-slate-500">
+            {print.labelItem.category.name}
           </div>
-        </section>
-      ) : null}
+
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>Preparo: {format(print.preparedAt)}</div>
+            <div>Validade: {format(print.expiresAt)}</div>
+            <div>Lote: {print.lot ?? '-'}</div>
+            <div>Status: {print.status}</div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => updateStatus('CONSUMED')}
+              disabled={isUpdating}
+              className="bg-blue-600 text-white px-3 py-2 rounded"
+            >
+              Consumido
+            </button>
+
+            <button
+              onClick={() => updateStatus('DISCARDED')}
+              disabled={isUpdating}
+              className="bg-red-600 text-white px-3 py-2 rounded"
+            >
+              Descartado
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

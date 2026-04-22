@@ -1,54 +1,21 @@
 import { useEffect, useState } from 'react';
 import * as QRCode from 'qrcode';
 import { api } from '../../services/api';
-
-type Category = {
-  id: string;
-  name: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LabelItem = {
-  id: string;
-  name: string;
-  categoryId: string;
-  category: Category;
-  itemType: 'INPUT' | 'PRODUCTION' | 'FRACTIONED';
-  defaultShelfLifeHours: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LabelPrintResponse = {
-  id: string;
-  labelItemId: string;
-  preparedAt: string;
-  expiresAt: string;
-  quantity: number | null;
-  weight: string | null;
-  lot: string | null;
-  qrCode: string;
-  status: 'ACTIVE' | 'EXPIRED' | 'DISCARDED' | 'CONSUMED';
-  createdAt: string;
-  updatedAt: string;
-  labelItem: LabelItem;
-};
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('pt-BR');
-}
+import { useToast } from '../../contexts/ToastContext';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 export function PrintPage() {
-  const [items, setItems] = useState<LabelItem[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [selected, setSelected] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [weight, setWeight] = useState('');
   const [lot, setLot] = useState('');
+  const [showQr, setShowQr] = useState(true);
+
   const [isLoading, setIsLoading] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+
+  const { showToast } = useToast();
 
   useEffect(() => {
     void loadItems();
@@ -57,177 +24,172 @@ export function PrintPage() {
   async function loadItems() {
     try {
       setIsLoading(true);
-      const response = await api.get<LabelItem[]>('/labels/items');
-      setItems(response.data);
+      const res = await api.get('/labels/items');
+      setItems(res.data);
     } catch (error) {
-      console.error('Erro ao carregar itens:', error);
-      alert('Não foi possível carregar os itens.');
+      showToast(getErrorMessage(error, 'Erro ao carregar itens'), 'error');
     } finally {
       setIsLoading(false);
     }
   }
 
+  function resetForm() {
+    setSelected('');
+    setQuantity(1);
+    setWeight('');
+    setLot('');
+  }
+
   async function handlePrint() {
-    if (!selected || isPrinting || quantity < 1) {
+    if (!selected || quantity < 1) {
+      showToast('Selecione um item válido', 'warning');
       return;
     }
 
     try {
       setIsPrinting(true);
 
-      const response = await api.post<LabelPrintResponse>('/labels/print', {
+      const { data } = await api.post('/labels/prints', {
         labelItemId: selected,
         quantity,
         weight: weight ? Number(weight) : undefined,
         lot: lot.trim() || undefined,
       });
 
-      const data = response.data;
       const qrBase64 = await QRCode.toDataURL(data.qrCode, {
-        margin: 1,
-        width: 160,
+        margin: 0,
+        width: 200,
       });
 
-      const printWindow = window.open('', '_blank', 'width=420,height=700');
+      const win = window.open('', '_blank', 'width=420,height=700');
 
-      if (!printWindow) {
-        alert('Não foi possível abrir a janela de impressão.');
+      if (!win) {
+        showToast('Bloqueador de popup ativo', 'error');
         return;
       }
 
-      let labelsHtml = '';
+      let labels = '';
 
-      for (let index = 0; index < quantity; index += 1) {
-        labelsHtml += `
+      for (let i = 0; i < quantity; i++) {
+        labels += `
           <div class="label">
             <div class="title">${data.labelItem.name}</div>
 
             <div class="divider"></div>
 
-            <div class="line"><strong>Categoria:</strong> ${data.labelItem.category.name}</div>
-            <div class="line"><strong>Preparo:</strong> ${formatDateTime(data.preparedAt)}</div>
-            <div class="expire"><strong>Validade:</strong> ${formatDateTime(data.expiresAt)}</div>
-            <div class="line"><strong>Lote:</strong> ${data.lot ?? '-'}</div>
-            <div class="line"><strong>Peso:</strong> ${data.weight ?? '-'}</div>
+            <div class="line">PREP: ${format(data.preparedAt)}</div>
 
-            <div class="qr">
-              <img src="${qrBase64}" alt="QR Code da etiqueta" />
+            <div class="expire">
+              VAL: ${format(data.expiresAt)} (${getDays(data.expiresAt)}d)
             </div>
 
-            <div class="code">${data.qrCode}</div>
+            <div class="line">LOTE: ${data.lot ?? '-'}</div>
+            <div class="line">PESO: ${data.weight ?? '-'}</div>
+
+            ${
+              showQr
+                ? `
+              <div class="qr">
+                <img src="${qrBase64}" />
+              </div>
+
+              <div class="code">${data.qrCode}</div>
+            `
+                : ''
+            }
           </div>
         `;
       }
 
-      const html = `
-        <!DOCTYPE html>
-        <html lang="pt-BR">
+      win.document.write(`
+        <html>
           <head>
-            <meta charset="UTF-8" />
-            <title>Etiquetas</title>
             <style>
-              @page {
-                size: 58mm auto;
-                margin: 0;
-              }
-
-              * {
-                box-sizing: border-box;
-              }
-
-              html, body {
-                margin: 0;
-                padding: 0;
-                background: #ffffff;
-                font-family: Arial, sans-serif;
-                color: #000000;
-              }
+              @page { size: 58mm auto; margin: 0; }
 
               body {
                 width: 58mm;
-                padding: 0;
+                margin: 0;
+                font-family: monospace;
+                font-size: 12px;
+                letter-spacing: 0.5px;
               }
 
               .label {
-                width: 58mm;
-                padding: 4mm;
+                padding: 3mm;
                 page-break-after: always;
-              }
-
-              .label:last-child {
-                page-break-after: auto;
               }
 
               .title {
                 font-size: 14px;
-                font-weight: 700;
-                line-height: 1.2;
+                font-weight: bold;
                 text-transform: uppercase;
-                margin-bottom: 4px;
               }
 
               .divider {
-                border-top: 1px solid #000;
+                border-top: 1px dashed #000;
                 margin: 4px 0;
               }
 
               .line {
                 font-size: 11px;
-                line-height: 1.35;
-                margin-bottom: 2px;
+                margin: 2px 0;
               }
 
               .expire {
                 font-size: 13px;
-                font-weight: 700;
-                line-height: 1.3;
-                margin-top: 4px;
-                margin-bottom: 4px;
+                font-weight: bold;
+                margin: 4px 0;
               }
 
               .qr {
-                margin-top: 6px;
                 text-align: center;
+                margin-top: 6px;
               }
 
               .qr img {
-                width: 80px;
-                height: 80px;
-                display: inline-block;
+                width: 90px;
+                height: 90px;
               }
 
               .code {
-                margin-top: 4px;
-                font-size: 9px;
                 text-align: center;
+                font-size: 9px;
+                margin-top: 4px;
                 word-break: break-all;
               }
             </style>
           </head>
           <body>
-            ${labelsHtml}
-
+            ${labels}
             <script>
-              window.onload = function () {
+              window.onload = () => {
                 window.print();
-                window.onafterprint = function () {
-                  window.close();
-                };
-              };
+                setTimeout(() => window.close(), 300);
+              }
             </script>
           </body>
         </html>
-      `;
+      `);
 
-      printWindow.document.open();
-      printWindow.document.write(html);
-      printWindow.document.close();
+      showToast('Etiquetas geradas com sucesso', 'success');
+      resetForm();
     } catch (error) {
-      console.error('Erro ao imprimir etiqueta:', error);
-      alert('Não foi possível gerar a etiqueta.');
+      showToast(getErrorMessage(error, 'Erro ao imprimir'), 'error');
     } finally {
       setIsPrinting(false);
     }
+  }
+
+  function format(date: string) {
+    return new Date(date).toLocaleDateString('pt-BR');
+  }
+
+  function getDays(date: string) {
+    const now = new Date();
+    const target = new Date(date);
+    const diff = target.getTime() - now.getTime();
+    return Math.max(Math.ceil(diff / (1000 * 60 * 60 * 24)), 0);
   }
 
   return (
@@ -235,104 +197,68 @@ export function PrintPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Impressão</h1>
         <p className="text-sm text-slate-600">
-          Gere etiquetas de validade de forma rápida.
+          Gere etiquetas para os itens cadastrados.
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">
-            Nova impressão
+      <div className="grid gap-6 lg:grid-cols-[400px_minmax(0,1fr)]">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Gerar etiquetas
           </h2>
 
-          <div className="space-y-4">
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-700">Item</span>
-              <select
-                value={selected}
-                onChange={(e) => setSelected(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-                disabled={isLoading || isPrinting}
-              >
-                <option value="">Selecione um item</option>
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} - {item.category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <select
+            value={selected}
+            onChange={(e) => setSelected(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2"
+          >
+            <option value="">Selecione</option>
+            {items.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
 
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-700">
-                Quantidade de etiquetas
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-                disabled={isPrinting}
-              />
-            </label>
+          <input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(e) => setQuantity(Number(e.target.value))}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2"
+          />
 
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-700">Peso</span>
-              <input
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                placeholder="Ex.: 0.500"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-                disabled={isPrinting}
-              />
-            </label>
+          <input
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            placeholder="Peso"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2"
+          />
 
-            <label className="block space-y-2">
-              <span className="text-sm font-medium text-slate-700">Lote</span>
-              <input
-                value={lot}
-                onChange={(e) => setLot(e.target.value)}
-                placeholder="Ex.: LOTE-001"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-                disabled={isPrinting}
-              />
-            </label>
+          <input
+            value={lot}
+            onChange={(e) => setLot(e.target.value)}
+            placeholder="Lote"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2"
+          />
 
-            <button
-              type="button"
-              onClick={handlePrint}
-              disabled={!selected || isPrinting || isLoading || quantity < 1}
-              className="w-full rounded-xl bg-green-600 px-4 py-3 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isPrinting ? 'Imprimindo...' : 'Imprimir etiquetas'}
-            </button>
-          </div>
-        </section>
+          {/* 🔥 NOVO */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showQr}
+              onChange={(e) => setShowQr(e.target.checked)}
+            />
+            Imprimir com QR Code
+          </label>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">
-            Orientações
-          </h2>
-
-          <div className="space-y-3 text-sm text-slate-600">
-            <p>
-              Selecione um item já cadastrado para gerar a etiqueta com validade
-              automática.
-            </p>
-            <p>
-              O campo <strong>peso</strong> é opcional e pode ser usado para
-              carnes, hortifruti fracionado e produtos porcionados.
-            </p>
-            <p>
-              O campo <strong>lote</strong> é opcional e ajuda na
-              rastreabilidade da produção.
-            </p>
-            <p>
-              A quantidade define quantas etiquetas iguais serão enviadas para
-              impressão.
-            </p>
-          </div>
+          <button
+            onClick={handlePrint}
+            disabled={isPrinting}
+            className="w-full rounded-xl bg-green-600 px-4 py-3 font-semibold text-white"
+          >
+            {isPrinting ? 'Imprimindo...' : 'Imprimir etiquetas'}
+          </button>
         </section>
       </div>
     </div>

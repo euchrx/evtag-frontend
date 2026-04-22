@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SyntheticEvent } from 'react';
 import { api } from '../../services/api';
+import { useToast } from '../../contexts/ToastContext';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 type LabelItemType = 'INPUT' | 'PRODUCTION' | 'FRACTIONED';
 
 type Category = {
   id: string;
   name: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 };
 
 type LabelItem = {
@@ -19,9 +18,6 @@ type LabelItem = {
   category: Category;
   itemType: LabelItemType;
   defaultShelfLifeHours: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
 };
 
 type LabelItemForm = {
@@ -54,18 +50,24 @@ export function ItemsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const { showToast } = useToast();
+
   useEffect(() => {
-    void Promise.all([loadItems(), loadCategories()]);
+    void loadItems();
+    void loadCategories();
   }, []);
 
   async function loadItems() {
     try {
       setIsLoading(true);
-      const response = await api.get<LabelItem[]>('/labels/items');
-      setItems(response.data);
+      const { data } = await api.get<LabelItem[]>('/labels/items');
+      setItems(data);
     } catch (error) {
-      console.error('Erro ao carregar itens:', error);
-      alert('Não foi possível carregar os itens.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível carregar os itens.'),
+        'error'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -73,11 +75,14 @@ export function ItemsPage() {
 
   async function loadCategories() {
     try {
-      const response = await api.get<Category[]>('/categories');
-      setCategories(response.data);
+      const { data } = await api.get<Category[]>('/categories');
+      setCategories(data);
     } catch (error) {
-      console.error('Erro ao carregar categorias:', error);
-      alert('Não foi possível carregar as categorias.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível carregar as categorias.'),
+        'error'
+      );
     }
   }
 
@@ -85,10 +90,7 @@ export function ItemsPage() {
     field: K,
     value: LabelItemForm[K],
   ) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+    setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   function resetForm() {
@@ -119,11 +121,14 @@ export function ItemsPage() {
     if (
       !payload.name ||
       !payload.categoryId ||
+      Number.isNaN(payload.defaultShelfLifeHours) ||
       payload.defaultShelfLifeHours < 1
     ) {
-      alert('Preencha os campos corretamente.');
+      showToast('Preencha os campos corretamente.', 'warning');
       return;
     }
+
+    const isEditing = !!editingId;
 
     try {
       setIsSaving(true);
@@ -136,22 +141,34 @@ export function ItemsPage() {
 
       resetForm();
       await loadItems();
+
+      showToast(
+        isEditing
+          ? 'Item atualizado com sucesso.'
+          : 'Item criado com sucesso.',
+        'success'
+      );
     } catch (error) {
-      console.error('Erro ao salvar item:', error);
-      alert('Não foi possível salvar o item.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível salvar o item.'),
+        'error'
+      );
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDelete(item: LabelItem) {
-    const confirmed = window.confirm(
-      `Deseja realmente excluir o item "${item.name}"?`,
-    );
-
-    if (!confirmed) {
+    if (editingId && editingId !== item.id) {
+      showToast(
+        'Finalize ou cancele a edição antes de excluir outro item.',
+        'warning'
+      );
       return;
     }
+
+    if (!confirm(`Excluir "${item.name}"?`)) return;
 
     try {
       setDeletingId(item.id);
@@ -162,27 +179,29 @@ export function ItemsPage() {
       }
 
       await loadItems();
+
+      showToast('Item excluído com sucesso.', 'success');
     } catch (error) {
-      console.error('Erro ao excluir item:', error);
-      alert('Não foi possível excluir o item.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível excluir o item.'),
+        'error'
+      );
     } finally {
       setDeletingId(null);
     }
   }
 
   const filteredItems = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+    const q = search.toLowerCase().trim();
 
-    if (!normalizedSearch) {
-      return items;
-    }
+    if (!q) return items;
 
-    return items.filter((item) => {
-      return (
-        item.name.toLowerCase().includes(normalizedSearch) ||
-        item.category.name.toLowerCase().includes(normalizedSearch)
-      );
-    });
+    return items.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        item.category.name.toLowerCase().includes(q),
+    );
   }, [items, search]);
 
   return (
@@ -201,7 +220,7 @@ export function ItemsPage() {
               {editingId ? 'Editar item' : 'Novo item'}
             </h2>
 
-            {editingId ? (
+            {editingId && (
               <button
                 type="button"
                 onClick={resetForm}
@@ -209,7 +228,7 @@ export function ItemsPage() {
               >
                 Cancelar
               </button>
-            ) : null}
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -263,17 +282,16 @@ export function ItemsPage() {
 
             <label className="block space-y-2">
               <span className="text-sm font-medium text-slate-700">
-                Validade padrão em horas
+                Validade (dias)
               </span>
               <input
                 type="number"
                 min={1}
-                value={form.defaultShelfLifeHours}
+                value={Math.round(form.defaultShelfLifeHours / 24)}
                 onChange={(e) =>
-                  updateForm('defaultShelfLifeHours', Number(e.target.value))
+                  updateForm('defaultShelfLifeHours', Number(e.target.value) * 24)
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-                required
+                className="w-full border p-2 rounded"
               />
             </label>
 
@@ -336,7 +354,7 @@ export function ItemsPage() {
                   className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_120px_120px_170px] gap-4 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
                 >
                   <div className="min-w-0">
-                    <div className="truncate font-medium text-slate-900">
+                    <div className="font-medium text-slate-900 break-words">
                       {item.name}
                     </div>
                   </div>
@@ -346,20 +364,23 @@ export function ItemsPage() {
                   </div>
 
                   <div className="text-slate-600">
-                    {itemTypeOptions.find(
-                      (option) => option.value === item.itemType,
-                    )?.label ?? item.itemType}
+                    {
+                      itemTypeOptions.find(
+                        (opt) => opt.value === item.itemType
+                      )?.label
+                    }
                   </div>
 
                   <div className="text-slate-600">
-                    {item.defaultShelfLifeHours}h
+                    {Math.round(item.defaultShelfLifeHours / 24)}d
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => handleEdit(item)}
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700"
+                      disabled={deletingId === item.id}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
                     >
                       Editar
                     </button>
@@ -368,7 +389,7 @@ export function ItemsPage() {
                       type="button"
                       onClick={() => handleDelete(item)}
                       disabled={deletingId === item.id}
-                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-60"
                     >
                       {deletingId === item.id ? 'Excluindo...' : 'Excluir'}
                     </button>

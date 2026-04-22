@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SyntheticEvent } from 'react';
 import { api } from '../../services/api';
+import { useToast } from '../../contexts/ToastContext';
+import { getErrorMessage } from '../../utils/getErrorMessage.ts';
 
 type Category = {
   id: string;
@@ -27,6 +29,8 @@ export function CategoriesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const { showToast } = useToast();
+
   useEffect(() => {
     void loadCategories();
   }, []);
@@ -37,8 +41,11 @@ export function CategoriesPage() {
       const response = await api.get<Category[]>('/categories');
       setCategories(response.data);
     } catch (error) {
-      console.error('Erro ao carregar categorias:', error);
-      alert('Não foi possível carregar as categorias.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível carregar as categorias.'),
+        'error'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -64,9 +71,11 @@ export function CategoriesPage() {
     };
 
     if (!payload.name) {
-      alert('Informe o nome da categoria.');
+      showToast('Informe o nome da categoria.', 'warning');
       return;
     }
+
+    const isEditing = !!editingId;
 
     try {
       setIsSaving(true);
@@ -79,22 +88,34 @@ export function CategoriesPage() {
 
       resetForm();
       await loadCategories();
+
+      showToast(
+        isEditing
+          ? 'Categoria atualizada com sucesso.'
+          : 'Categoria criada com sucesso.',
+        'success'
+      );
     } catch (error) {
-      console.error('Erro ao salvar categoria:', error);
-      alert('Não foi possível salvar a categoria.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível salvar a categoria.'),
+        'error'
+      );
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDelete(category: Category) {
-    const confirmed = window.confirm(
-      `Deseja realmente excluir a categoria "${category.name}"?`,
-    );
-
-    if (!confirmed) {
+    if (editingId && editingId !== category.id) {
+      showToast(
+        'Finalize ou cancele a edição antes de excluir outra categoria.',
+        'warning'
+      );
       return;
     }
+
+    if (!confirm(`Excluir "${category.name}"?`)) return;
 
     try {
       setDeletingId(category.id);
@@ -105,9 +126,14 @@ export function CategoriesPage() {
       }
 
       await loadCategories();
+
+      showToast('Categoria excluída com sucesso.', 'success');
     } catch (error) {
-      console.error('Erro ao excluir categoria:', error);
-      alert('Não foi possível excluir a categoria.');
+      console.error(error);
+      showToast(
+        getErrorMessage(error, 'Não foi possível excluir a categoria.'),
+        'error'
+      );
     } finally {
       setDeletingId(null);
     }
@@ -121,7 +147,7 @@ export function CategoriesPage() {
     }
 
     return categories.filter((category) =>
-      category.name.toLowerCase().includes(normalizedSearch),
+      category.name.toLowerCase().includes(normalizedSearch)
     );
   }, [categories, search]);
 
@@ -141,7 +167,7 @@ export function CategoriesPage() {
               {editingId ? 'Editar categoria' : 'Nova categoria'}
             </h2>
 
-            {editingId ? (
+            {editingId && (
               <button
                 type="button"
                 onClick={resetForm}
@@ -149,7 +175,7 @@ export function CategoriesPage() {
               >
                 Cancelar
               </button>
-            ) : null}
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -175,8 +201,8 @@ export function CategoriesPage() {
                   ? 'Salvando alterações...'
                   : 'Salvando...'
                 : editingId
-                  ? 'Salvar alterações'
-                  : 'Salvar categoria'}
+                ? 'Salvar alterações'
+                : 'Salvar categoria'}
             </button>
           </form>
         </section>
@@ -228,7 +254,8 @@ export function CategoriesPage() {
                     <button
                       type="button"
                       onClick={() => handleEdit(category)}
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700"
+                      disabled={deletingId === category.id}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Editar
                     </button>
