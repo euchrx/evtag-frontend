@@ -1,35 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as QRCode from 'qrcode';
+import {
+  CheckCircle2,
+  Clock3,
+  Pencil,
+  Printer,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { api } from '../../services/api';
-
-type Category = {
-  id: string;
-  name: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LabelItem = {
-  id: string;
-  name: string;
-  categoryId: string;
-  category: Category;
-  itemType: 'INPUT' | 'PRODUCTION' | 'FRACTIONED';
-  defaultShelfLifeHours: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+import { useToast } from '../../contexts/ToastContext';
+import { getErrorMessage } from '../../utils/getErrorMessage';
 
 type LabelPrintStatus = 'ACTIVE' | 'EXPIRED' | 'DISCARDED' | 'CONSUMED';
 type StatusFilter = 'ALL' | LabelPrintStatus;
-type ExpirationFilter = 'ALL' | 'WARNING' | 'EXPIRED';
-type ExpirationState = 'OK' | 'WARNING' | 'EXPIRED';
+type ExpirationFilter = 'ALL' | 'TODAY' | 'EXPIRED';
+type ExpirationState = 'OK' | 'TODAY' | 'EXPIRED';
 
 type LabelPrint = {
   id: string;
-  labelItemId: string;
   preparedAt: string;
   expiresAt: string;
   quantity: number | null;
@@ -37,9 +28,12 @@ type LabelPrint = {
   lot: string | null;
   qrCode: string;
   status: LabelPrintStatus;
-  createdAt: string;
-  updatedAt: string;
-  labelItem: LabelItem;
+  labelItem: {
+    name: string;
+    category: {
+      name: string;
+    };
+  };
 };
 
 type EditForm = {
@@ -48,45 +42,46 @@ type EditForm = {
   expiresAt: string;
 };
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('pt-BR');
+function formatDateOnly(value?: string | null) {
+  if (!value) return '-';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return date.toISOString().slice(0, 10);
 }
 
-function toInputDateTimeLocal(value: string) {
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+
   const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60 * 1000);
-  return localDate.toISOString().slice(0, 16);
+
+  if (Number.isNaN(date.getTime())) return '-';
+
+  const datePart = date.toISOString().slice(0, 10);
+  const timePart = date.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+  return `${datePart} - ${timePart}`;
+}
+
+function toInputDate(value: string) {
+  return formatDateOnly(value);
 }
 
 function getStatusLabel(status: LabelPrintStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'Ativa';
-    case 'EXPIRED':
-      return 'Vencida';
-    case 'DISCARDED':
-      return 'Descartada';
-    case 'CONSUMED':
-      return 'Consumida';
-    default:
-      return status;
-  }
-}
+  const labels: Record<LabelPrintStatus, string> = {
+    ACTIVE: 'Ativa',
+    EXPIRED: 'Vencida',
+    DISCARDED: 'Descartada',
+    CONSUMED: 'Consumida',
+  };
 
-function getStatusClasses(status: LabelPrintStatus) {
-  switch (status) {
-    case 'ACTIVE':
-      return 'bg-emerald-100 text-emerald-700';
-    case 'EXPIRED':
-      return 'bg-amber-100 text-amber-700';
-    case 'DISCARDED':
-      return 'bg-red-100 text-red-700';
-    case 'CONSUMED':
-      return 'bg-blue-100 text-blue-700';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
+  return labels[status];
 }
 
 function getExpirationState(expiresAt: string): ExpirationState {
@@ -97,52 +92,28 @@ function getExpirationState(expiresAt: string): ExpirationState {
     return 'EXPIRED';
   }
 
-  const diffHours = (expiration.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const todayKey = now.toISOString().slice(0, 10);
+  const expirationKey = expiration.toISOString().slice(0, 10);
 
-  if (diffHours <= 6) {
-    return 'WARNING';
+  if (expirationKey === todayKey) {
+    return 'TODAY';
   }
 
   return 'OK';
 }
 
 function getExpirationLabel(state: ExpirationState) {
-  switch (state) {
-    case 'EXPIRED':
-      return 'Vencida';
-    case 'WARNING':
-      return 'Vencendo em breve';
-    case 'OK':
-      return 'No prazo';
-    default:
-      return state;
-  }
+  const labels: Record<ExpirationState, string> = {
+    OK: 'No prazo',
+    TODAY: 'Vence hoje',
+    EXPIRED: 'Vencida',
+  };
+
+  return labels[state];
 }
 
-function getExpirationBadgeClasses(state: ExpirationState) {
-  switch (state) {
-    case 'EXPIRED':
-      return 'bg-red-100 text-red-700';
-    case 'WARNING':
-      return 'bg-yellow-100 text-yellow-700';
-    case 'OK':
-      return 'bg-slate-100 text-slate-700';
-    default:
-      return 'bg-slate-100 text-slate-700';
-  }
-}
-
-function getRowHighlightClasses(state: ExpirationState) {
-  switch (state) {
-    case 'EXPIRED':
-      return 'bg-red-50';
-    case 'WARNING':
-      return 'bg-yellow-50';
-    case 'OK':
-      return '';
-    default:
-      return '';
-  }
+function getShortCode(qrCode: string) {
+  return qrCode.replace(/[^a-zA-Z0-9]/g, '').slice(-7).toUpperCase() || 'EVTAG';
 }
 
 export function HistoryPage() {
@@ -161,6 +132,8 @@ export function HistoryPage() {
     expiresAt: '',
   });
 
+  const { showToast } = useToast();
+
   useEffect(() => {
     void loadPrints();
   }, []);
@@ -168,26 +141,14 @@ export function HistoryPage() {
   async function loadPrints() {
     try {
       setIsLoading(true);
-      const response = await api.get<LabelPrint[]>('/labels/prints');
-      setPrints(response.data);
+
+      const { data } = await api.get<LabelPrint[]>('/labels/prints');
+
+      setPrints(data);
     } catch (error) {
-      console.error('Erro ao carregar histórico:', error);
-      alert('Não foi possível carregar o histórico.');
+      showToast(getErrorMessage(error, 'Erro ao carregar histórico'), 'error');
     } finally {
       setIsLoading(false);
-    }
-  }
-
-  async function updateStatus(id: string, status: LabelPrintStatus) {
-    try {
-      setUpdatingId(id);
-      await api.patch(`/labels/prints/${id}/status`, { status });
-      await loadPrints();
-    } catch (error) {
-      console.error('Erro ao atualizar status da etiqueta:', error);
-      alert('Não foi possível atualizar o status da etiqueta.');
-    } finally {
-      setUpdatingId(null);
     }
   }
 
@@ -196,7 +157,7 @@ export function HistoryPage() {
     setEditForm({
       lot: print.lot ?? '',
       weight: print.weight ?? '',
-      expiresAt: toInputDateTimeLocal(print.expiresAt),
+      expiresAt: toInputDate(print.expiresAt),
     });
   }
 
@@ -217,15 +178,32 @@ export function HistoryPage() {
         lot: editForm.lot.trim() || null,
         weight: editForm.weight.trim() ? Number(editForm.weight) : null,
         expiresAt: editForm.expiresAt
-          ? new Date(editForm.expiresAt).toISOString()
+          ? new Date(`${editForm.expiresAt}T00:00:00`).toISOString()
           : undefined,
       });
 
       cancelEdit();
       await loadPrints();
+
+      showToast('Etiqueta atualizada com sucesso.', 'success');
     } catch (error) {
-      console.error('Erro ao editar etiqueta:', error);
-      alert('Não foi possível salvar as alterações da etiqueta.');
+      showToast(getErrorMessage(error, 'Erro ao salvar alterações'), 'error');
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function updateStatus(id: string, status: LabelPrintStatus) {
+    try {
+      setUpdatingId(id);
+
+      await api.patch(`/labels/prints/${id}/status`, { status });
+
+      await loadPrints();
+
+      showToast('Status atualizado com sucesso.', 'success');
+    } catch (error) {
+      showToast(getErrorMessage(error, 'Erro ao atualizar status'), 'error');
     } finally {
       setUpdatingId(null);
     }
@@ -236,125 +214,185 @@ export function HistoryPage() {
       setReprintingId(print.id);
 
       const qrBase64 = await QRCode.toDataURL(print.qrCode, {
-        margin: 1,
-        width: 160,
+        margin: 0,
+        width: 220,
       });
 
       const printWindow = window.open('', '_blank', 'width=420,height=700');
 
       if (!printWindow) {
-        alert('Não foi possível abrir a janela de impressão.');
+        showToast('Bloqueador de popup ativo.', 'error');
         return;
       }
 
-      const html = `
-        <!DOCTYPE html>
-        <html lang="pt-BR">
+      const shortCode = getShortCode(print.qrCode);
+
+      printWindow.document.write(`
+        <html>
           <head>
-            <meta charset="UTF-8" />
             <title>Reimpressão de etiqueta</title>
             <style>
-              @page {
-                size: 58mm auto;
-                margin: 0;
-              }
+              @page { size: 58mm auto; margin: 0; }
+
               * {
                 box-sizing: border-box;
               }
-              html, body {
-                margin: 0;
-                padding: 0;
-                background: #ffffff;
-                font-family: Arial, sans-serif;
-                color: #000000;
-              }
+
               body {
                 width: 58mm;
-                padding: 0;
+                margin: 0;
+                font-family: "Arial Narrow", Arial, Helvetica, sans-serif;
+                color: #000;
+                background: #fff;
               }
+
               .label {
                 width: 58mm;
-                padding: 4mm;
+                padding: 2mm 2.5mm;
+                page-break-after: always;
               }
-              .title {
-                font-size: 14px;
-                font-weight: 700;
-                line-height: 1.2;
-                text-transform: uppercase;
-                margin-bottom: 4px;
-              }
-              .divider {
-                border-top: 1px solid #000;
-                margin: 4px 0;
-              }
-              .line {
-                font-size: 11px;
-                line-height: 1.35;
-                margin-bottom: 2px;
-              }
-              .expire {
+
+              .product {
                 font-size: 13px;
-                font-weight: 700;
-                line-height: 1.3;
+                font-weight: 900;
+                text-transform: uppercase;
+                line-height: 1;
+              }
+
+              .subtitle-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 4px;
                 margin-top: 4px;
-                margin-bottom: 4px;
               }
-              .qr {
-                margin-top: 6px;
-                text-align: center;
+
+              .subtitle {
+                font-size: 6.8px;
+                font-weight: 900;
+                text-transform: uppercase;
               }
+
+              .weight {
+                font-size: 7px;
+                font-weight: 900;
+                white-space: nowrap;
+              }
+
+              .rule {
+                border-top: 1px solid #000;
+                margin: 3px 0;
+              }
+
+              .row {
+                display: grid;
+                grid-template-columns: 72px 1fr;
+                font-size: 7.3px;
+                line-height: 1.15;
+                margin: 0.5px 0;
+              }
+
+              .row span {
+                font-weight: 900;
+              }
+
+              .row strong {
+                text-align: right;
+                font-weight: 700;
+              }
+
+              .bottom {
+                display: grid;
+                grid-template-columns: 1fr 17mm;
+                gap: 3px;
+                align-items: end;
+              }
+
+              .info {
+                font-size: 6.7px;
+                line-height: 1.12;
+                font-weight: 700;
+              }
+
+              .code-text {
+                margin-top: 1px;
+                font-size: 7px;
+                font-weight: 900;
+              }
+
+              .qr,
               .qr img {
-                width: 80px;
-                height: 80px;
-                display: inline-block;
+                width: 17mm;
+                height: 17mm;
               }
-              .code {
-                margin-top: 4px;
-                font-size: 9px;
-                text-align: center;
-                word-break: break-all;
-              }
-              .tag {
-                margin-top: 6px;
-                text-align: center;
-                font-size: 10px;
-                font-weight: 700;
+
+              .reprint {
+                margin-top: 2px;
+                font-size: 7px;
+                font-weight: 900;
               }
             </style>
           </head>
+
           <body>
             <div class="label">
-              <div class="title">${print.labelItem.name}</div>
-              <div class="divider"></div>
-              <div class="line"><strong>Categoria:</strong> ${print.labelItem.category.name}</div>
-              <div class="line"><strong>Preparo:</strong> ${formatDateTime(print.preparedAt)}</div>
-              <div class="expire"><strong>Validade:</strong> ${formatDateTime(print.expiresAt)}</div>
-              <div class="line"><strong>Lote:</strong> ${print.lot ?? '-'}</div>
-              <div class="line"><strong>Peso:</strong> ${print.weight ?? '-'}</div>
-              <div class="qr">
-                <img src="${qrBase64}" alt="QR Code da etiqueta" />
+              <div class="product">${print.labelItem.name}</div>
+
+              <div class="subtitle-row">
+                <div class="subtitle">${print.labelItem.category.name}</div>
+                <div class="weight">${print.weight || '-'}</div>
               </div>
-              <div class="code">${print.qrCode}</div>
-              <div class="tag">REIMPRESSÃO</div>
+
+              <div class="rule"></div>
+
+              <div class="row">
+                <span>PREPARO:</span>
+                <strong>${formatDateTime(print.preparedAt)}</strong>
+              </div>
+
+              <div class="row">
+                <span>VALIDADE:</span>
+                <strong>${formatDateTime(print.expiresAt)}</strong>
+              </div>
+
+              <div class="row">
+                <span>LOTE:</span>
+                <strong>${print.lot || '-'}</strong>
+              </div>
+
+              <div class="row">
+                <span>STATUS:</span>
+                <strong>${getStatusLabel(print.status)}</strong>
+              </div>
+
+              <div class="rule"></div>
+
+              <div class="bottom">
+                <div class="info">
+                  <div><strong>QR:</strong> ${print.qrCode}</div>
+                  <div class="code-text">#${shortCode}</div>
+                  <div class="reprint">REIMPRESSÃO</div>
+                </div>
+
+                <div class="qr">
+                  <img src="${qrBase64}" />
+                </div>
+              </div>
             </div>
+
             <script>
-              window.onload = function () {
+              window.onload = () => {
                 window.print();
-                window.onafterprint = function () {
-                  window.close();
-                };
+                setTimeout(() => window.close(), 300);
               };
             </script>
           </body>
         </html>
-      `;
+      `);
 
-      printWindow.document.open();
-      printWindow.document.write(html);
       printWindow.document.close();
     } catch (error) {
-      console.error('Erro ao reimprimir etiqueta:', error);
-      alert('Não foi possível reimprimir a etiqueta.');
+      showToast(getErrorMessage(error, 'Erro ao reimprimir etiqueta'), 'error');
     } finally {
       setReprintingId(null);
     }
@@ -376,7 +414,9 @@ export function HistoryPage() {
 
       const matchesSearch = normalizedSearch
         ? print.labelItem.name.toLowerCase().includes(normalizedSearch) ||
-          print.labelItem.category.name.toLowerCase().includes(normalizedSearch) ||
+          print.labelItem.category.name
+            .toLowerCase()
+            .includes(normalizedSearch) ||
           (print.lot ?? '').toLowerCase().includes(normalizedSearch) ||
           print.qrCode.toLowerCase().includes(normalizedSearch)
         : true;
@@ -385,241 +425,445 @@ export function HistoryPage() {
     });
   }, [prints, search, statusFilter, expirationFilter]);
 
+  const activeCount = useMemo(
+    () => prints.filter((print) => print.status === 'ACTIVE').length,
+    [prints],
+  );
+
+  const todayCount = useMemo(
+    () =>
+      prints.filter((print) => getExpirationState(print.expiresAt) === 'TODAY')
+        .length,
+    [prints],
+  );
+
+  const expiredCount = useMemo(
+    () =>
+      prints.filter((print) => getExpirationState(print.expiresAt) === 'EXPIRED')
+        .length,
+    [prints],
+  );
+
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-6">
+    <div className="space-y-8 font-sans">
+      <PageHeader
+        isLoading={isLoading}
+        onRefresh={loadPrints}
+        total={prints.length}
+        active={activeCount}
+        today={todayCount}
+        expired={expiredCount}
+      />
+
+      <section className="rounded-[2rem] border border-evtag-border bg-white shadow-sm">
+        <div className="border-b border-evtag-border px-6 py-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <div className="inline-flex rounded-full bg-evtag-light px-3 py-1 text-xs font-bold uppercase tracking-wide text-evtag-primary">
+                Histórico
+              </div>
+
+              <h2 className="mt-4 font-display text-xl font-extrabold text-evtag-text">
+                Etiquetas geradas
+              </h2>
+
+              <p className="mt-1 text-sm text-evtag-muted">
+                {filteredPrints.length} resultado(s) no escopo atual.
+              </p>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_180px] xl:w-[760px]">
+              <div className="relative">
+                <Search
+                  size={18}
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-evtag-muted"
+                />
+
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar por item, categoria, lote ou QR"
+                  className="h-11 w-full rounded-2xl border border-evtag-border bg-evtag-bg pl-11 pr-4 text-sm font-medium text-evtag-text outline-none transition placeholder:text-evtag-muted/60 focus:border-evtag-primary focus:bg-white focus:ring-4 focus:ring-evtag-light"
+                />
+              </div>
+
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as StatusFilter)
+                }
+                className="h-11 rounded-2xl border border-evtag-border bg-evtag-bg px-4 text-sm font-medium text-evtag-text outline-none transition focus:border-evtag-primary focus:bg-white focus:ring-4 focus:ring-evtag-light"
+              >
+                <option value="ALL">Todos os status</option>
+                <option value="ACTIVE">Ativas</option>
+                <option value="EXPIRED">Vencidas</option>
+                <option value="DISCARDED">Descartadas</option>
+                <option value="CONSUMED">Consumidas</option>
+              </select>
+
+              <select
+                value={expirationFilter}
+                onChange={(event) =>
+                  setExpirationFilter(event.target.value as ExpirationFilter)
+                }
+                className="h-11 rounded-2xl border border-evtag-border bg-evtag-bg px-4 text-sm font-medium text-evtag-text outline-none transition focus:border-evtag-primary focus:bg-white focus:ring-4 focus:ring-evtag-light"
+              >
+                <option value="ALL">Todas validades</option>
+                <option value="TODAY">Vencem hoje</option>
+                <option value="EXPIRED">Vencidas</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <EmptyMessage message="Carregando histórico..." />
+        ) : filteredPrints.length === 0 ? (
+          <EmptyMessage message="Nenhuma etiqueta encontrada." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-evtag-border text-sm">
+              <thead className="bg-evtag-light/60">
+                <tr>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Lote</TableHead>
+                  <TableHead>Preparo</TableHead>
+                  <TableHead>Validade</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Alerta</TableHead>
+                  <TableHead align="right">Ações</TableHead>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-evtag-border bg-white">
+                {filteredPrints.map((print) => {
+                  const expirationState = getExpirationState(print.expiresAt);
+                  const isEditing = editingId === print.id;
+                  const isBusy =
+                    updatingId === print.id || reprintingId === print.id;
+
+                  return (
+                    <tr
+                      key={print.id}
+                      className="transition hover:bg-evtag-light/50"
+                    >
+                      <td className="max-w-[320px] px-5 py-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-evtag-light text-evtag-primary">
+                            <Clock3 size={18} />
+                          </div>
+
+                          <div className="min-w-0">
+                            <p className="truncate font-bold text-evtag-text">
+                              {print.labelItem.name}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-evtag-muted">
+                              {print.labelItem.category.name}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-evtag-muted/70">
+                              QR: {print.qrCode}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4">
+                        {isEditing ? (
+                          <input
+                            value={editForm.lot}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                lot: event.target.value,
+                              }))
+                            }
+                            className="h-10 w-32 rounded-xl border border-evtag-border bg-white px-3 text-sm font-medium outline-none focus:border-evtag-primary focus:ring-4 focus:ring-evtag-light"
+                          />
+                        ) : (
+                          <span className="font-medium text-evtag-muted">
+                            {print.lot || '-'}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4 font-medium text-evtag-muted">
+                        {formatDateOnly(print.preparedAt)}
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4">
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            value={editForm.expiresAt}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                expiresAt: event.target.value,
+                              }))
+                            }
+                            className="h-10 rounded-xl border border-evtag-border bg-white px-3 text-sm font-medium outline-none focus:border-evtag-primary focus:ring-4 focus:ring-evtag-light"
+                          />
+                        ) : (
+                          <span className="font-medium text-evtag-muted">
+                            {formatDateOnly(print.expiresAt)}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <StatusBadge status={print.status} />
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <ExpirationBadge state={expirationState} />
+
+                        {isEditing ? (
+                          <input
+                            value={editForm.weight}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                weight: event.target.value,
+                              }))
+                            }
+                            placeholder="Peso"
+                            className="mt-2 h-10 w-28 rounded-xl border border-evtag-border bg-white px-3 text-sm font-medium outline-none focus:border-evtag-primary focus:ring-4 focus:ring-evtag-light"
+                          />
+                        ) : (
+                          <p className="mt-1 text-xs font-medium text-evtag-muted">
+                            Peso: {print.weight || '-'}
+                          </p>
+                        )}
+                      </td>
+
+                      <td className="whitespace-nowrap px-5 py-4 text-right">
+                        {isEditing ? (
+                          <div className="flex justify-end gap-2">
+                            <ActionButton
+                              variant="success"
+                              onClick={() => void saveEdit(print.id)}
+                              disabled={isBusy}
+                            >
+                              <CheckCircle2 size={15} />
+                              Salvar
+                            </ActionButton>
+
+                            <ActionButton
+                              variant="neutral"
+                              onClick={cancelEdit}
+                              disabled={isBusy}
+                            >
+                              <X size={15} />
+                              Cancelar
+                            </ActionButton>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end gap-2">
+                            <ActionButton
+                              variant="warning"
+                              onClick={() => startEdit(print)}
+                              disabled={isBusy}
+                            >
+                              <Pencil size={15} />
+                              Editar
+                            </ActionButton>
+
+                            <ActionButton
+                              variant="neutral"
+                              onClick={() => void handleReprint(print)}
+                              disabled={isBusy}
+                            >
+                              <Printer size={15} />
+                              {reprintingId === print.id
+                                ? 'Reimprimindo...'
+                                : 'Reimprimir'}
+                            </ActionButton>
+
+                            <ActionButton
+                              variant="info"
+                              onClick={() =>
+                                void updateStatus(print.id, 'CONSUMED')
+                              }
+                              disabled={isBusy || print.status === 'CONSUMED'}
+                            >
+                              Consumir
+                            </ActionButton>
+
+                            <ActionButton
+                              variant="danger"
+                              onClick={() =>
+                                void updateStatus(print.id, 'DISCARDED')
+                              }
+                              disabled={isBusy || print.status === 'DISCARDED'}
+                            >
+                              <Trash2 size={15} />
+                              Descartar
+                            </ActionButton>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function PageHeader({
+  isLoading,
+  onRefresh,
+  total,
+  active,
+  today,
+  expired,
+}: {
+  isLoading: boolean;
+  onRefresh: () => Promise<void>;
+  total: number;
+  active: number;
+  today: number;
+  expired: number;
+}) {
+  return (
+    <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          Histórico de etiquetas
+        <h1 className="font-display text-4xl font-black tracking-tight text-evtag-text">
+          Histórico
         </h1>
-        <p className="text-sm text-slate-600">
-          Acompanhe, reimprima, edite e atualize o status operacional.
+
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-evtag-muted">
+          Acompanhe etiquetas geradas, status, validade, consumo e descarte.
         </p>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              Etiquetas geradas
-            </h2>
-            <p className="text-sm text-slate-600">
-              {filteredPrints.length} etiqueta(s) encontrada(s)
-            </p>
-          </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <HeaderStat label="Total" value={total} />
+        <HeaderStat label="Ativas" value={active} />
+        <HeaderStat label="Vencem hoje" value={today} />
+        <HeaderStat label="Vencidas" value={expired} />
 
-          <div className="flex flex-col gap-3 xl:flex-row">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por item, categoria, lote ou QR Code"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900 xl:w-80"
-            />
+        <button
+          type="button"
+          onClick={() => void onRefresh()}
+          disabled={isLoading}
+          className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-evtag-primary px-5 text-sm font-bold text-white shadow-lg shadow-purple-950/10 transition hover:bg-evtag-dark disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw size={17} className={isLoading ? 'animate-spin' : ''} />
+          {isLoading ? 'Atualizando...' : 'Atualizar'}
+        </button>
+      </div>
+    </header>
+  );
+}
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-            >
-              <option value="ALL">Todos os status</option>
-              <option value="ACTIVE">Ativa</option>
-              <option value="EXPIRED">Vencida</option>
-              <option value="DISCARDED">Descartada</option>
-              <option value="CONSUMED">Consumida</option>
-            </select>
+function HeaderStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex h-12 min-w-[104px] items-center rounded-2xl bg-white px-4 shadow-sm ring-1 ring-evtag-border">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-wide text-evtag-muted">
+          {label}
+        </p>
 
-            <select
-              value={expirationFilter}
-              onChange={(e) =>
-                setExpirationFilter(e.target.value as ExpirationFilter)
-              }
-              className="rounded-lg border border-slate-300 px-3 py-2 outline-none transition focus:border-slate-900"
-            >
-              <option value="ALL">Validade: Todas</option>
-              <option value="WARNING">Vencendo em breve</option>
-              <option value="EXPIRED">Vencidas</option>
-            </select>
-          </div>
-        </div>
+        <p className="font-display text-xl font-black leading-none text-evtag-primary">
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
 
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="grid grid-cols-[minmax(0,1.2fr)_110px_160px_160px_120px_140px_320px] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-            <div>Item</div>
-            <div>Lote</div>
-            <div>Preparo</div>
-            <div>Validade</div>
-            <div>Status</div>
-            <div>Alerta</div>
-            <div>Ações</div>
-          </div>
+function TableHead({
+  children,
+  align = 'left',
+}: {
+  children: React.ReactNode;
+  align?: 'left' | 'right';
+}) {
+  const alignClass = align === 'right' ? 'text-right' : 'text-left';
 
-          {isLoading ? (
-            <div className="px-4 py-6 text-sm text-slate-500">
-              Carregando histórico...
-            </div>
-          ) : filteredPrints.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-slate-500">
-              Nenhuma etiqueta encontrada.
-            </div>
-          ) : (
-            filteredPrints.map((print) => {
-              const expirationState = getExpirationState(print.expiresAt);
-              const isEditing = editingId === print.id;
+  return (
+    <th
+      className={`whitespace-nowrap px-5 py-4 ${alignClass} text-xs font-black uppercase tracking-wide text-evtag-muted`}
+    >
+      {children}
+    </th>
+  );
+}
 
-              return (
-                <div
-                  key={print.id}
-                  className={`grid grid-cols-[minmax(0,1.2fr)_110px_160px_160px_120px_140px_320px] gap-4 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 ${getRowHighlightClasses(expirationState)}`}
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold text-slate-900">
-                      {print.labelItem.name}
-                    </div>
-                    <div className="truncate text-slate-500">
-                      {print.labelItem.category.name}
-                    </div>
-                    <div className="truncate text-xs text-slate-400">
-                      QR: {print.qrCode}
-                    </div>
-                  </div>
+function StatusBadge({ status }: { status: LabelPrintStatus }) {
+  const classMap: Record<LabelPrintStatus, string> = {
+    ACTIVE: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    EXPIRED: 'bg-red-50 text-red-700 ring-red-200',
+    DISCARDED: 'bg-slate-100 text-slate-700 ring-slate-200',
+    CONSUMED: 'bg-blue-50 text-blue-700 ring-blue-200',
+  };
 
-                  <div className="text-slate-600">
-                    {isEditing ? (
-                      <input
-                        value={editForm.lot}
-                        onChange={(e) =>
-                          setEditForm((current) => ({
-                            ...current,
-                            lot: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                    ) : (
-                      print.lot ?? '-'
-                    )}
-                  </div>
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${classMap[status]}`}
+    >
+      {getStatusLabel(status)}
+    </span>
+  );
+}
 
-                  <div className="text-slate-600">
-                    {formatDateTime(print.preparedAt)}
-                  </div>
+function ExpirationBadge({ state }: { state: ExpirationState }) {
+  const classMap: Record<ExpirationState, string> = {
+    OK: 'bg-slate-100 text-slate-700 ring-slate-200',
+    TODAY: 'bg-amber-50 text-amber-700 ring-amber-200',
+    EXPIRED: 'bg-red-50 text-red-700 ring-red-200',
+  };
 
-                  <div className="text-slate-600">
-                    {isEditing ? (
-                      <input
-                        type="datetime-local"
-                        value={editForm.expiresAt}
-                        onChange={(e) =>
-                          setEditForm((current) => ({
-                            ...current,
-                            expiresAt: e.target.value,
-                          }))
-                        }
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                    ) : (
-                      formatDateTime(print.expiresAt)
-                    )}
-                  </div>
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${classMap[state]}`}
+    >
+      {getExpirationLabel(state)}
+    </span>
+  );
+}
 
-                  <div>
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusClasses(print.status)}`}
-                    >
-                      {getStatusLabel(print.status)}
-                    </span>
-                  </div>
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  variant,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+}) {
+  const classMap = {
+    success:
+      'bg-emerald-50 text-emerald-700 ring-emerald-100 hover:bg-emerald-100',
+    warning: 'bg-amber-50 text-amber-700 ring-amber-100 hover:bg-amber-100',
+    danger: 'bg-red-50 text-red-700 ring-red-100 hover:bg-red-100',
+    info: 'bg-blue-50 text-blue-700 ring-blue-100 hover:bg-blue-100',
+    neutral: 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200',
+  };
 
-                  <div className="space-y-2">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getExpirationBadgeClasses(expirationState)}`}
-                    >
-                      {getExpirationLabel(expirationState)}
-                    </span>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-9 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold ring-1 transition disabled:cursor-not-allowed disabled:opacity-60 ${classMap[variant]}`}
+    >
+      {children}
+    </button>
+  );
+}
 
-                    {isEditing ? (
-                      <input
-                        value={editForm.weight}
-                        onChange={(e) =>
-                          setEditForm((current) => ({
-                            ...current,
-                            weight: e.target.value,
-                          }))
-                        }
-                        placeholder="Peso"
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
-                      />
-                    ) : (
-                      <div className="text-xs text-slate-500">
-                        Peso: {print.weight ?? '-'}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {isEditing ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => saveEdit(print.id)}
-                          disabled={updatingId === print.id}
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
-                        >
-                          Salvar
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={cancelEdit}
-                          className="rounded-lg bg-slate-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-600"
-                        >
-                          Cancelar
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => startEdit(print)}
-                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-700"
-                        >
-                          Editar
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleReprint(print)}
-                          disabled={reprintingId === print.id}
-                          className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
-                        >
-                          {reprintingId === print.id ? 'Reimprimindo...' : 'Reimprimir'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => updateStatus(print.id, 'CONSUMED')}
-                          disabled={updatingId === print.id}
-                          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
-                        >
-                          Consumida
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => updateStatus(print.id, 'DISCARDED')}
-                          disabled={updatingId === print.id}
-                          className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-60"
-                        >
-                          Descartada
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </section>
+function EmptyMessage({ message }: { message: string }) {
+  return (
+    <div className="px-6 py-10 text-center text-sm text-evtag-muted">
+      {message}
     </div>
   );
 }

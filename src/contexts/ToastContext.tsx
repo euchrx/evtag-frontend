@@ -1,7 +1,7 @@
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
-type ToastType = 'success' | 'error' | 'warning';
+type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 type Toast = {
   id: string;
@@ -15,18 +15,35 @@ type ToastContextType = {
 
 const ToastContext = createContext<ToastContextType | null>(null);
 
+const toastStyles: Record<ToastType, string> = {
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  error: 'border-red-200 bg-red-50 text-red-800',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  info: 'border-blue-200 bg-blue-50 text-blue-800',
+};
+
+function createToastId() {
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  function removeToast(id: string) {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }
+
   function showToast(message: string, type: ToastType = 'success') {
-    const id = crypto.randomUUID();
+    const id = createToastId();
 
-    const newToast: Toast = { id, message, type };
+    setToasts((prev) => [...prev.slice(-3), { id, message, type }]);
 
-    setToasts((prev) => [...prev, newToast]);
-
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
+    window.setTimeout(() => {
+      removeToast(id);
     }, 3000);
   }
 
@@ -34,20 +51,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ showToast }}>
       {children}
 
-      {/* Container */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
+      <div className="fixed right-4 top-4 z-50 w-[calc(100%-2rem)] max-w-sm space-y-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`
-              px-4 py-3 rounded-lg shadow-lg text-white min-w-[250px]
-              animate-in fade-in slide-in-from-right-5
-              ${toast.type === 'success' && 'bg-green-600'}
-              ${toast.type === 'error' && 'bg-red-600'}
-              ${toast.type === 'warning' && 'bg-yellow-500 text-black'}
-            `}
+            className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-medium shadow-lg backdrop-blur ${toastStyles[toast.type]}`}
           >
-            {toast.message}
+            <span>{toast.message}</span>
+
+            <button
+              type="button"
+              onClick={() => removeToast(toast.id)}
+              className="text-current opacity-60 transition hover:opacity-100"
+              aria-label="Fechar notificação"
+            >
+              ×
+            </button>
           </div>
         ))}
       </div>
@@ -57,6 +76,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 export function useToast() {
   const context = useContext(ToastContext);
-  if (!context) throw new Error('useToast must be used within ToastProvider');
+
+  if (!context) {
+    throw new Error('useToast must be used within ToastProvider');
+  }
+
   return context;
 }

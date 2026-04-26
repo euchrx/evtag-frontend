@@ -13,10 +13,14 @@ api.interceptors.request.use((config) => {
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  } else {
+    delete config.headers.Authorization;
   }
 
   if (role === 'SUPER_ADMIN' && selectedCompanyId) {
     config.headers['x-company-id'] = selectedCompanyId;
+  } else {
+    delete config.headers['x-company-id'];
   }
 
   return config;

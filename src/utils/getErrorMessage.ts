@@ -1,28 +1,39 @@
-export function getErrorMessage(error: any, fallback = 'Erro inesperado') {
+import type { AxiosError } from 'axios';
+
+type ApiErrorResponse = {
+  message?: string | string[];
+  error?: string;
+  statusCode?: number;
+};
+
+export function getErrorMessage(
+  error: unknown,
+  fallback = 'Erro inesperado',
+): string {
   if (!error) return fallback;
 
-  // Axios response
-  const response = error?.response;
+  const axiosError = error as AxiosError<ApiErrorResponse>;
+  const response = axiosError.response;
 
   if (response) {
     const data = response.data;
 
-    // NestJS padrão (string ou array)
     if (data?.message) {
-      if (Array.isArray(data.message)) {
-        return data.message.join(', ');
-      }
-      return data.message;
+      return Array.isArray(data.message)
+        ? data.message.join(', ')
+        : data.message;
     }
 
-    // fallback com status
+    if (data?.error) {
+      return data.error;
+    }
+
     if (response.status) {
       return `Erro ${response.status}`;
     }
   }
 
-  // erro comum JS
-  if (error.message) {
+  if (error instanceof Error && error.message) {
     return error.message;
   }
 

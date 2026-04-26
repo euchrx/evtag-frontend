@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ShieldCheck, Tag } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export function LoginPage() {
@@ -31,63 +32,146 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-slate-900">Entrar no EvTag</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Acesse sua conta para gerenciar etiquetas, itens e validade.
+    <div className="flex min-h-screen bg-evtag-bg font-sans">
+      <section className="hidden flex-1 bg-evtag-primary p-10 text-white lg:flex lg:flex-col lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-evtag-primary">
+              <Tag size={22} />
+            </div>
+
+            <div>
+              <p className="font-display text-xl font-black">EvTag</p>
+              <p className="text-xs font-medium text-white/60">
+                Etiquetagem inteligente
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-xl">
+          <p className="mb-4 inline-flex rounded-full bg-white/10 px-4 py-2 text-xs font-black uppercase tracking-wide text-white/75">
+            Controle, validade e rastreabilidade
+          </p>
+
+          <h1 className="font-display text-5xl font-black leading-tight tracking-tight">
+            Padronize sua operação com etiquetas inteligentes.
+          </h1>
+
+          <p className="mt-6 text-lg leading-8 text-white/70">
+            Gere etiquetas, acompanhe validade, faça conferência por QR Code e
+            mantenha o controle operacional em tempo real.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium text-slate-700">
-              E-mail
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-              placeholder="seuemail@empresa.com"
-              required
-            />
-          </div>
+        <div className="grid grid-cols-3 gap-4">
+          <FeatureCard title="QR Code" description="Conferência rápida" />
+          <FeatureCard title="Validade" description="Controle diário" />
+          <FeatureCard title="Cozinha" description="Fluxo operacional" />
+        </div>
+      </section>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium text-slate-700">
-              Senha
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-              placeholder="••••••••"
-              required
-            />
-          </div>
+      <main className="flex flex-1 items-center justify-center px-6 py-10">
+        <div className="w-full max-w-md">
+          <div className="mb-8 lg:hidden">
+            <div className="inline-flex items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-evtag-border">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-evtag-primary text-white">
+                <Tag size={22} />
+              </div>
 
-          {errorMessage ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorMessage}
+              <div>
+                <p className="font-display text-xl font-black text-evtag-text">
+                  EvTag
+                </p>
+                <p className="text-xs font-medium text-evtag-muted">
+                  Etiquetagem inteligente
+                </p>
+              </div>
             </div>
-          ) : null}
+          </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {isSubmitting ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
+          <div className="rounded-[2rem] border border-evtag-border bg-white p-8 shadow-sm">
+            <div className="mb-8">
+              <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-evtag-light text-evtag-primary">
+                <ShieldCheck size={28} />
+              </div>
+
+              <h1 className="font-display text-3xl font-black tracking-tight text-evtag-text">
+                Entrar no EvTag
+              </h1>
+
+              <p className="mt-2 text-sm leading-6 text-evtag-muted">
+                Acesse sua conta para gerenciar etiquetas, produtos e validade.
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-evtag-text">
+                  E-mail
+                </span>
+
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="h-12 w-full rounded-2xl border border-evtag-border bg-evtag-bg px-4 text-sm font-medium text-evtag-text outline-none transition placeholder:text-evtag-muted/60 focus:border-evtag-primary focus:bg-white focus:ring-4 focus:ring-evtag-light"
+                  placeholder="seuemail@empresa.com"
+                  required
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-evtag-text">
+                  Senha
+                </span>
+
+                <input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="h-12 w-full rounded-2xl border border-evtag-border bg-evtag-bg px-4 text-sm font-medium text-evtag-text outline-none transition placeholder:text-evtag-muted/60 focus:border-evtag-primary focus:bg-white focus:ring-4 focus:ring-evtag-light"
+                  placeholder="••••••••"
+                  required
+                />
+              </label>
+
+              {errorMessage ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+                  {errorMessage}
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-evtag-primary px-5 text-sm font-bold text-white shadow-lg shadow-purple-950/10 transition hover:bg-evtag-dark disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting ? 'Entrando...' : 'Entrar'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function FeatureCard({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white/10 p-4">
+      <p className="font-display text-lg font-black">{title}</p>
+      <p className="mt-1 text-sm text-white/60">{description}</p>
     </div>
   );
 }

@@ -100,6 +100,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(SELECTED_COMPANY_KEY);
+
+    delete api.defaults.headers.common.Authorization;
+    delete api.defaults.headers.common['x-company-id'];
+
     setToken(null);
     setUser(null);
     setSelectedCompanyIdState(null);
@@ -168,6 +172,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setSelectedCompanyIdState(companyId);
+
+      window.dispatchEvent(
+        new CustomEvent('evtag:company-scope-changed', {
+          detail: { companyId },
+        }),
+      );
     },
     [],
   );
