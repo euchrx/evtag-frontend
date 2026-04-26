@@ -6,6 +6,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { getErrorMessage } from '../../utils/getErrorMessage';
 
 type WeightUnit = 'g' | 'kg';
+type ApiWeightUnit = 'G' | 'KG';
 
 type LabelItem = {
   id: string;
@@ -13,15 +14,43 @@ type LabelItem = {
 };
 
 type PrintResponse = {
+  id: string;
   qrCode: string;
+  preparedAt: string;
+  expiresAt: string;
+  originalExpiresAt?: string | null;
+  quantity?: number | null;
+  weight?: number | string | null;
+  weightUnit?: ApiWeightUnit | null;
+  lot?: string | null;
+  brandOrSupplier?: string | null;
+  sif?: string | null;
+  responsible?: string | null;
+  showQr?: boolean | null;
   labelItem: {
     name: string;
   };
-  preparedAt: string;
-  expiresAt: string;
-  lot?: string | null;
-  weight?: number | null;
+  company?: {
+    name?: string | null;
+    tradeName?: string | null;
+    document?: string | null;
+    cnpj?: string | null;
+    cep?: string | null;
+    street?: string | null;
+    number?: string | null;
+    district?: string | null;
+    city?: string | null;
+    state?: string | null;
+  } | null;
 };
+
+function toApiWeightUnit(unit: WeightUnit): ApiWeightUnit {
+  return unit === 'kg' ? 'KG' : 'G';
+}
+
+function toUiWeightUnit(unit?: ApiWeightUnit | null): WeightUnit {
+  return unit === 'KG' ? 'kg' : 'g';
+}
 
 function formatDate(value?: string | null) {
   if (!value) return '-';
@@ -64,6 +93,16 @@ function getShortCode(qrCode: string) {
   return qrCode.replace(/[^a-zA-Z0-9]/g, '').slice(-7).toUpperCase() || 'EVTAG';
 }
 
+function buildOriginalExpiresAt(originalDate: string) {
+  if (!originalDate) return undefined;
+
+  const date = new Date(`${originalDate}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) return undefined;
+
+  return date.toISOString();
+}
+
 export function PrintPage() {
   const [items, setItems] = useState<LabelItem[]>([]);
   const [selected, setSelected] = useState('');
@@ -74,13 +113,13 @@ export function PrintPage() {
   const [showQr, setShowQr] = useState(true);
 
   const [originalDate, setOriginalDate] = useState('');
-  const [brandOrSupplier, setBrandOrSupplier] = useState('SWIFT');
-  const [sif, setSif] = useState('358');
-  const [responsible, setResponsible] = useState('LUCIANA');
-  const [companyName, setCompanyName] = useState('PADRÃO SUFLEX');
-  const [cnpj, setCnpj] = useState('12.345.678/0001-12');
-  const [cep, setCep] = useState('05435-030');
-  const [street, setStreet] = useState('PURPURINA, 400');
+  const [brandOrSupplier, setBrandOrSupplier] = useState('');
+  const [sif, setSif] = useState('');
+  const [responsible, setResponsible] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [cep, setCep] = useState('');
+  const [street, setStreet] = useState('');
 
   const [lastPrint, setLastPrint] = useState<PrintResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -113,8 +152,49 @@ export function PrintPage() {
     setWeightUnit('g');
     setLot('');
     setOriginalDate('');
-    setBrandOrSupplier('SWIFT');
-    setSif('358');
+    setBrandOrSupplier('');
+    setSif('');
+  }
+
+  function getCompanyDisplay(print: PrintResponse) {
+    const company = print.company;
+
+    const resolvedCompanyName =
+      company?.tradeName ||
+      company?.name ||
+      companyName ||
+      '-';
+
+    const resolvedCnpj =
+      company?.cnpj ||
+      company?.document ||
+      cnpj ||
+      '-';
+
+    const resolvedCep = company?.cep || cep || '-';
+
+    const streetParts = [
+      company?.street,
+      company?.number,
+    ].filter(Boolean);
+
+    const resolvedStreet =
+      streetParts.length > 0
+        ? streetParts.join(', ')
+        : street || '-';
+
+    const resolvedCityState = [
+      company?.city,
+      company?.state,
+    ].filter(Boolean).join(' - ') || '-';
+
+    return {
+      companyName: resolvedCompanyName,
+      cnpj: resolvedCnpj,
+      cep: resolvedCep,
+      street: resolvedStreet,
+      cityState: resolvedCityState,
+    };
   }
 
   async function handlePrint() {
@@ -137,10 +217,18 @@ export function PrintPage() {
         labelItemId: selected,
         quantity,
         weight: parsedWeight,
+        weightUnit: toApiWeightUnit(weightUnit),
         lot: lot.trim() || undefined,
+        originalExpiresAt: buildOriginalExpiresAt(originalDate),
+        brandOrSupplier: brandOrSupplier.trim() || undefined,
+        sif: sif.trim() || undefined,
+        responsible: responsible.trim() || undefined,
+        showQr,
       });
 
       setLastPrint(data);
+
+      const shouldShowQr = data.showQr ?? showQr;
 
       const qrBase64 = await QRCode.toDataURL(data.qrCode, {
         margin: 0,
@@ -154,13 +242,25 @@ export function PrintPage() {
         return;
       }
 
-      const formattedWeight = formatWeight(data.weight ?? weight, weightUnit);
+      const resolvedUnit = toUiWeightUnit(data.weightUnit) || weightUnit;
+      const formattedWeight = formatWeight(data.weight ?? weight, resolvedUnit);
       const manipulationDate = formatDateTime(data.preparedAt);
       const expirationDate = formatDateTime(data.expiresAt);
-      const originalExpirationDate = originalDate
-        ? formatDateTime(`${originalDate}T00:00:00`)
-        : formatDate(data.expiresAt);
+      const originalExpirationDate =
+        data.originalExpiresAt
+          ? formatDateTime(data.originalExpiresAt)
+          : originalDate
+            ? formatDateTime(`${originalDate}T00:00:00`)
+            : formatDate(data.expiresAt);
+
       const shortCode = getShortCode(data.qrCode);
+      const company = getCompanyDisplay(data);
+
+      const resolvedBrandOrSupplier =
+        data.brandOrSupplier || brandOrSupplier || '-';
+
+      const resolvedSif = data.sif || sif || '-';
+      const resolvedResponsible = data.responsible || responsible || '-';
 
       let labels = '';
 
@@ -195,36 +295,35 @@ export function PrintPage() {
 
             <div class="row">
               <span>MARCA / FORN:</span>
-              <strong>${brandOrSupplier || '-'}</strong>
+              <strong>${resolvedBrandOrSupplier}</strong>
             </div>
 
             <div class="row">
               <span>SIF:</span>
-              <strong>${sif || '-'}</strong>
+              <strong>${resolvedSif}</strong>
             </div>
 
             <div class="rule"></div>
 
             <div class="bottom">
               <div class="info">
-                <div><strong>RESP.:</strong> ${responsible || '-'}</div>
-                <div>RESTAURANTE ${companyName || '-'}</div>
-                <div>CNPJ: ${cnpj || '-'}</div>
-                <div>CEP: ${cep || '-'}</div>
-                <div>RUA ${street || '-'}</div>
-                <div>SÃO PAULO - SP</div>
+                <div><strong>RESP.:</strong> ${resolvedResponsible}</div>
+                <div>RESTAURANTE ${company.companyName}</div>
+                <div>CNPJ: ${company.cnpj}</div>
+                <div>CEP: ${company.cep}</div>
+                <div>RUA ${company.street}</div>
+                <div>${company.cityState}</div>
                 <div class="code-text">#${shortCode}</div>
               </div>
 
-              ${
-                showQr
-                  ? `
+              ${shouldShowQr
+            ? `
                     <div class="qr">
                       <img src="${qrBase64}" />
                     </div>
                   `
-                  : ''
-              }
+            : ''
+          }
             </div>
           </div>
         `;
@@ -547,7 +646,6 @@ export function PrintPage() {
               </button>
             </div>
           </div>
-
           <div className="grid gap-6 xl:grid-rows-2">
             <section className="rounded-[2rem] border border-evtag-border bg-white p-6 shadow-sm">
               <div className="mb-6">
@@ -589,13 +687,22 @@ export function PrintPage() {
                   <div className="border-t border-black" />
 
                   <div>
-                    <PreviewRow label="VAL. ORIGINAL:" value={originalDate || '-'} />
+                    <PreviewRow
+                      label="VAL. ORIGINAL:"
+                      value={originalDate || '-'}
+                    />
                     <PreviewRow
                       label="MANIPULAÇÃO:"
                       value={formatDateTime(new Date().toISOString())}
                     />
-                    <PreviewRow label="VALIDADE:" value="Definida pelo produto" />
-                    <PreviewRow label="MARCA / FORN:" value={brandOrSupplier || '-'} />
+                    <PreviewRow
+                      label="VALIDADE:"
+                      value="Definida pelo produto"
+                    />
+                    <PreviewRow
+                      label="MARCA / FORN:"
+                      value={brandOrSupplier || '-'}
+                    />
                     <PreviewRow label="SIF:" value={sif || '-'} />
                   </div>
 
@@ -610,7 +717,7 @@ export function PrintPage() {
                       <div>CNPJ: {cnpj || '-'}</div>
                       <div>CEP: {cep || '-'}</div>
                       <div>RUA {street || '-'}</div>
-                      <div>SÃO PAULO - SP</div>
+                      <div>Empresa cadastrada</div>
                       <div className="mt-1 text-[8px] font-black">#EVTAG</div>
                     </div>
 
@@ -642,11 +749,17 @@ export function PrintPage() {
               {lastPrint ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <InfoCard label="Produto" value={lastPrint.labelItem.name} />
-                  <InfoCard label="Validade" value={formatDate(lastPrint.expiresAt)} />
+                  <InfoCard
+                    label="Validade"
+                    value={formatDate(lastPrint.expiresAt)}
+                  />
                   <InfoCard label="Lote" value={lastPrint.lot || '-'} />
                   <InfoCard
                     label="Peso"
-                    value={formatWeight(lastPrint.weight ?? weight, weightUnit)}
+                    value={formatWeight(
+                      lastPrint.weight ?? weight,
+                      toUiWeightUnit(lastPrint.weightUnit),
+                    )}
                   />
                   <InfoCard label="QR Code" value={lastPrint.qrCode} />
                   <InfoCard
@@ -747,19 +860,17 @@ function StepItem({
 }) {
   return (
     <div
-      className={`rounded-2xl border p-4 transition ${
-        active
+      className={`rounded-2xl border p-4 transition ${active
           ? 'border-evtag-primary bg-evtag-light'
           : 'border-evtag-border bg-white'
-      }`}
+        }`}
     >
       <div className="flex items-start gap-3">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-display text-sm font-black ${
-            active
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl font-display text-sm font-black ${active
               ? 'bg-evtag-primary text-white'
               : 'bg-evtag-light text-evtag-primary'
-          }`}
+            }`}
         >
           {number}
         </div>

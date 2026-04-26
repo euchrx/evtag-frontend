@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ShieldCheck, Tag } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -9,6 +10,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -20,6 +22,8 @@ export function LoginPage() {
         email: email.trim(),
         password,
       });
+
+      navigate('/'); // ou '/dashboard'
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
