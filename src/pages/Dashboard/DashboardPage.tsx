@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Building2,
   CheckCircle2,
   ClipboardCheck,
   PackageCheck,
@@ -11,6 +12,7 @@ import {
 import { api } from '../../services/api';
 import { useToast } from '../../contexts/ToastContext';
 import { getErrorMessage } from '../../utils/getErrorMessage';
+import { useAuth } from '../../contexts/AuthContext';
 
 type LabelStatus = 'ACTIVE' | 'EXPIRED' | 'CONSUMED' | 'DISCARDED';
 
@@ -57,12 +59,17 @@ export function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const { showToast } = useToast();
+  const { user, selectedCompanyId } = useAuth();
 
-  useEffect(() => {
-    void loadDashboard();
-  }, []);
+  const needsCompanySelection =
+    user?.role === 'SUPER_ADMIN' && !selectedCompanyId;
 
-  async function loadDashboard() {
+  const loadDashboard = useCallback(async () => {
+    if (needsCompanySelection) {
+      setData(null);
+      return;
+    }
+
     try {
       setIsLoading(true);
 
@@ -72,10 +79,33 @@ export function DashboardPage() {
       setData(dashboardData);
     } catch (error) {
       showToast(getErrorMessage(error, 'Erro ao carregar dashboard'), 'error');
+      setData(null);
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [needsCompanySelection, showToast]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    function handleCompanyScopeChanged() {
+      void loadDashboard();
+    }
+
+    window.addEventListener(
+      'evtag:company-scope-changed',
+      handleCompanyScopeChanged,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'evtag:company-scope-changed',
+        handleCompanyScopeChanged,
+      );
+    };
+  }, [loadDashboard]);
 
   const metrics = data?.metrics;
 
@@ -83,6 +113,39 @@ export function DashboardPage() {
     if (!metrics?.total) return 0;
     return Math.round((metrics.active / metrics.total) * 100);
   }, [metrics]);
+
+  if (needsCompanySelection) {
+    return (
+      <div className="space-y-6 font-sans">
+        <PageHeader onRefresh={loadDashboard} isLoading={isLoading} disabled />
+
+        <section className="rounded-[2rem] border border-amber-200 bg-amber-50 p-8 shadow-sm">
+          <div className="flex flex-col gap-5 md:flex-row md:items-start">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-amber-100 text-amber-700">
+              <Building2 size={26} />
+            </div>
+
+            <div>
+              <h2 className="font-display text-xl font-black text-amber-950">
+                Selecione uma empresa para carregar o painel
+              </h2>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-800">
+                Você está acessando como Super Admin. Para visualizar métricas,
+                etiquetas e movimentações, selecione uma empresa no seletor do
+                topo da tela.
+              </p>
+
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-white/70 px-4 py-3 text-sm font-semibold text-amber-900">
+                Após selecionar a empresa, o sistema enviará automaticamente o
+                header x-company-id nas próximas requisições.
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   if (!metrics) {
     return (
@@ -106,37 +169,37 @@ export function DashboardPage() {
     className: string;
     text: string;
   }> = [
-      {
-        label: 'Ativas',
-        value: metrics.active,
-        className: 'bg-emerald-500',
-        text: 'text-emerald-700',
-      },
-      {
-        label: 'Vencem hoje',
-        value: metrics.warning,
-        className: 'bg-amber-400',
-        text: 'text-amber-700',
-      },
-      {
-        label: 'Vencidas',
-        value: metrics.expired,
-        className: 'bg-red-500',
-        text: 'text-red-700',
-      },
-      {
-        label: 'Consumidas',
-        value: metrics.consumed,
-        className: 'bg-blue-500',
-        text: 'text-blue-700',
-      },
-      {
-        label: 'Descartadas',
-        value: metrics.discarded,
-        className: 'bg-slate-400',
-        text: 'text-slate-700',
-      },
-    ];
+    {
+      label: 'Ativas',
+      value: metrics.active,
+      className: 'bg-emerald-500',
+      text: 'text-emerald-700',
+    },
+    {
+      label: 'Vencem hoje',
+      value: metrics.warning,
+      className: 'bg-amber-400',
+      text: 'text-amber-700',
+    },
+    {
+      label: 'Vencidas',
+      value: metrics.expired,
+      className: 'bg-red-500',
+      text: 'text-red-700',
+    },
+    {
+      label: 'Consumidas',
+      value: metrics.consumed,
+      className: 'bg-blue-500',
+      text: 'text-blue-700',
+    },
+    {
+      label: 'Descartadas',
+      value: metrics.discarded,
+      className: 'bg-slate-400',
+      text: 'text-slate-700',
+    },
+  ];
 
   return (
     <div className="space-y-8 font-sans">
@@ -363,9 +426,11 @@ export function DashboardPage() {
 function PageHeader({
   onRefresh,
   isLoading,
+  disabled = false,
 }: {
   onRefresh: () => Promise<void>;
   isLoading: boolean;
+  disabled?: boolean;
 }) {
   return (
     <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -383,7 +448,7 @@ function PageHeader({
       <button
         type="button"
         onClick={() => void onRefresh()}
-        disabled={isLoading}
+        disabled={isLoading || disabled}
         className="inline-flex items-center justify-center gap-2 rounded-2xl bg-evtag-primary px-5 py-3 text-sm font-bold text-white shadow-lg shadow-purple-950/10 transition hover:bg-evtag-dark disabled:cursor-not-allowed disabled:opacity-60"
       >
         <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
