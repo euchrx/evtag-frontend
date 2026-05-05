@@ -57,52 +57,16 @@ const SELECTED_COMPANY_KEY = 'evtag_selected_company_id';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(
+
+  const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY),
   );
+
   const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(
-    localStorage.getItem(SELECTED_COMPANY_KEY),
+    () => localStorage.getItem(SELECTED_COMPANY_KEY),
   );
+
   const [isLoading, setIsLoading] = useState(true);
-
-  const persistSession = useCallback(
-    (nextToken: string, nextUser: AuthUser) => {
-      localStorage.setItem(TOKEN_KEY, nextToken);
-      localStorage.setItem(ROLE_KEY, nextUser.role);
-
-      if (nextUser.role === 'SUPER_ADMIN') {
-        const companyId = selectedCompanyId ?? null;
-
-        if (companyId) {
-          localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
-        } else {
-          localStorage.removeItem(SELECTED_COMPANY_KEY);
-        }
-      } else {
-        const companyId = nextUser.companyId ?? null;
-
-        if (companyId) {
-          localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
-          setSelectedCompanyIdState(companyId);
-        } else {
-          localStorage.removeItem(SELECTED_COMPANY_KEY);
-          setSelectedCompanyIdState(null);
-        }
-      }
-
-      api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
-
-      const storedCompanyId = localStorage.getItem(SELECTED_COMPANY_KEY);
-
-      if (nextUser.role === 'SUPER_ADMIN' && storedCompanyId) {
-        api.defaults.headers.common['x-company-id'] = storedCompanyId;
-      }
-
-      setToken(nextToken);
-      setUser(nextUser);
-    },
-    [selectedCompanyId],
-  );
 
   const clearSession = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
@@ -117,13 +81,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSelectedCompanyIdState(null);
   }, []);
 
+  const persistSession = useCallback(
+    (nextToken: string, nextUser: AuthUser) => {
+      localStorage.setItem(TOKEN_KEY, nextToken);
+      localStorage.setItem(ROLE_KEY, nextUser.role);
+
+      api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
+
+      if (nextUser.role === 'SUPER_ADMIN') {
+        const currentSelectedCompanyId =
+          selectedCompanyId ?? localStorage.getItem(SELECTED_COMPANY_KEY);
+
+        if (currentSelectedCompanyId) {
+          localStorage.setItem(SELECTED_COMPANY_KEY, currentSelectedCompanyId);
+          api.defaults.headers.common['x-company-id'] = currentSelectedCompanyId;
+          setSelectedCompanyIdState(currentSelectedCompanyId);
+        } else {
+          localStorage.removeItem(SELECTED_COMPANY_KEY);
+          delete api.defaults.headers.common['x-company-id'];
+          setSelectedCompanyIdState(null);
+        }
+      } else {
+        const companyId = nextUser.companyId ?? null;
+
+        if (companyId) {
+          localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
+          api.defaults.headers.common['x-company-id'] = companyId;
+          setSelectedCompanyIdState(companyId);
+        } else {
+          localStorage.removeItem(SELECTED_COMPANY_KEY);
+          delete api.defaults.headers.common['x-company-id'];
+          setSelectedCompanyIdState(null);
+        }
+      }
+
+      setToken(nextToken);
+      setUser(nextUser);
+    },
+    [selectedCompanyId],
+  );
+
   const refreshMe = useCallback(async () => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
 
     if (!currentToken) {
+      setToken(null);
       setUser(null);
+      setSelectedCompanyIdState(null);
+
+      delete api.defaults.headers.common.Authorization;
+      delete api.defaults.headers.common['x-company-id'];
+
       return;
     }
+
+    setToken(currentToken);
 
     api.defaults.headers.common.Authorization = `Bearer ${currentToken}`;
 
@@ -134,25 +146,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSelectedCompanyIdState(storedCompanyId);
     } else {
       delete api.defaults.headers.common['x-company-id'];
+      setSelectedCompanyIdState(null);
     }
 
     const { data } = await api.get<AuthUser>('/auth/me');
-    setUser(data);
 
+    setUser(data);
     localStorage.setItem(ROLE_KEY, data.role);
 
-    if (data.role !== 'SUPER_ADMIN') {
-      const companyId = data.companyId ?? null;
+    if (data.role === 'SUPER_ADMIN') {
+      const superAdminCompanyId = localStorage.getItem(SELECTED_COMPANY_KEY);
 
-      if (companyId) {
-        localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
-        api.defaults.headers.common['x-company-id'] = companyId;
-        setSelectedCompanyIdState(companyId);
+      if (superAdminCompanyId) {
+        api.defaults.headers.common['x-company-id'] = superAdminCompanyId;
+        setSelectedCompanyIdState(superAdminCompanyId);
       } else {
-        localStorage.removeItem(SELECTED_COMPANY_KEY);
         delete api.defaults.headers.common['x-company-id'];
         setSelectedCompanyIdState(null);
       }
+
+      return;
+    }
+
+    const companyId = data.companyId ?? null;
+
+    if (companyId) {
+      localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
+      api.defaults.headers.common['x-company-id'] = companyId;
+      setSelectedCompanyIdState(companyId);
+    } else {
+      localStorage.removeItem(SELECTED_COMPANY_KEY);
+      delete api.defaults.headers.common['x-company-id'];
+      setSelectedCompanyIdState(null);
     }
   }, []);
 
@@ -184,43 +209,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
   }, [clearSession]);
 
-  const setSelectedCompanyId = useCallback(
-    (companyId: string | null) => {
-      if (companyId) {
-        localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
-        api.defaults.headers.common['x-company-id'] = companyId;
-      } else {
-        localStorage.removeItem(SELECTED_COMPANY_KEY);
-        delete api.defaults.headers.common['x-company-id'];
-      }
+  const setSelectedCompanyId = useCallback((companyId: string | null) => {
+    if (companyId) {
+      localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
+      api.defaults.headers.common['x-company-id'] = companyId;
+    } else {
+      localStorage.removeItem(SELECTED_COMPANY_KEY);
+      delete api.defaults.headers.common['x-company-id'];
+    }
 
-      setSelectedCompanyIdState(companyId);
+    setSelectedCompanyIdState(companyId);
 
-      window.dispatchEvent(
-        new CustomEvent('evtag:company-scope-changed', {
-          detail: { companyId },
-        }),
-      );
-    },
-    [],
-  );
+    window.dispatchEvent(
+      new CustomEvent('evtag:company-scope-changed', {
+        detail: { companyId },
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
     async function bootstrap() {
       try {
-        const currentToken = localStorage.getItem(TOKEN_KEY);
-
-        if (!currentToken) {
-          if (isMounted) {
-            setIsLoading(false);
-          }
-          return;
-        }
-
         await refreshMe();
-      } catch {
+      } catch (error) {
         clearSession();
       } finally {
         if (isMounted) {
@@ -240,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       token,
-      isAuthenticated: !!token && !!user,
+      isAuthenticated: Boolean(token && user),
       isLoading,
       login,
       register,

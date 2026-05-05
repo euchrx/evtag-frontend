@@ -15,6 +15,7 @@ import { UsersPage } from './../pages/Users/UsersPage';
 export function AppRoutes() {
   return (
     <Routes>
+
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/categories" element={<CategoriesPage />} />
