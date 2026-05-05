@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  Building2,
   CheckCircle2,
   ClipboardCheck,
   PackageCheck,
@@ -61,12 +60,15 @@ export function DashboardPage() {
   const { showToast } = useToast();
   const { user, selectedCompanyId } = useAuth();
 
-  const needsCompanySelection =
-    user?.role === 'SUPER_ADMIN' && !selectedCompanyId;
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
+  const hasCompanyScope =
+    !isSuperAdmin || Boolean(selectedCompanyId);
 
   const loadDashboard = useCallback(async () => {
-    if (needsCompanySelection) {
+    if (!hasCompanyScope) {
       setData(null);
+      setIsLoading(false);
       return;
     }
 
@@ -83,28 +85,10 @@ export function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [needsCompanySelection, showToast]);
+  }, [hasCompanyScope, showToast]);
 
   useEffect(() => {
     void loadDashboard();
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    function handleCompanyScopeChanged() {
-      void loadDashboard();
-    }
-
-    window.addEventListener(
-      'evtag:company-scope-changed',
-      handleCompanyScopeChanged,
-    );
-
-    return () => {
-      window.removeEventListener(
-        'evtag:company-scope-changed',
-        handleCompanyScopeChanged,
-      );
-    };
   }, [loadDashboard]);
 
   const metrics = data?.metrics;
@@ -114,34 +98,15 @@ export function DashboardPage() {
     return Math.round((metrics.active / metrics.total) * 100);
   }, [metrics]);
 
-  if (needsCompanySelection) {
+  if (!hasCompanyScope) {
     return (
       <div className="space-y-6 font-sans">
         <PageHeader onRefresh={loadDashboard} isLoading={isLoading} disabled />
 
-        <section className="rounded-[2rem] border border-amber-200 bg-amber-50 p-8 shadow-sm">
-          <div className="flex flex-col gap-5 md:flex-row md:items-start">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-amber-100 text-amber-700">
-              <Building2 size={26} />
-            </div>
-
-            <div>
-              <h2 className="font-display text-xl font-black text-amber-950">
-                Selecione uma empresa para carregar o painel
-              </h2>
-
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-amber-800">
-                Você está acessando como Super Admin. Para visualizar métricas,
-                etiquetas e movimentações, selecione uma empresa no seletor do
-                topo da tela.
-              </p>
-
-              <div className="mt-5 rounded-2xl border border-amber-200 bg-white/70 px-4 py-3 text-sm font-semibold text-amber-900">
-                Após selecionar a empresa, o sistema enviará automaticamente o
-                header x-company-id nas próximas requisições.
-              </div>
-            </div>
-          </div>
+        <section className="rounded-[2rem] border border-evtag-border bg-white p-8 shadow-sm">
+          <p className="text-sm text-evtag-muted">
+            Selecione uma empresa para visualizar o painel operacional.
+          </p>
         </section>
       </div>
     );

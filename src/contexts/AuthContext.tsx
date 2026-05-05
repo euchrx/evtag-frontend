@@ -81,24 +81,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSelectedCompanyIdState(null);
   }, []);
 
-  const persistSession = useCallback(
-    (nextToken: string, nextUser: AuthUser) => {
-      localStorage.setItem(TOKEN_KEY, nextToken);
-      localStorage.setItem(ROLE_KEY, nextUser.role);
+  const persistSession = useCallback((nextToken: string, nextUser: AuthUser) => {
+    localStorage.setItem(TOKEN_KEY, nextToken);
+    localStorage.setItem(ROLE_KEY, nextUser.role);
 
-      api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
+    api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
 
-      if (nextUser.role === 'SUPER_ADMIN') {
+    if (nextUser.role === 'SUPER_ADMIN') {
+      localStorage.removeItem(SELECTED_COMPANY_KEY);
+      delete api.defaults.headers.common['x-company-id'];
+      setSelectedCompanyIdState(null);
+    } else {
+      const companyId = nextUser.companyId ?? null;
+
+      if (companyId) {
+        localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
+        api.defaults.headers.common['x-company-id'] = companyId;
+        setSelectedCompanyIdState(companyId);
+      } else {
         localStorage.removeItem(SELECTED_COMPANY_KEY);
         delete api.defaults.headers.common['x-company-id'];
         setSelectedCompanyIdState(null);
       }
+    }
 
-      setToken(nextToken);
-      setUser(nextUser);
-    },
-    [selectedCompanyId],
-  );
+    setToken(nextToken);
+    setUser(nextUser);
+  }, []);
 
   const refreshMe = useCallback(async () => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
