@@ -38,16 +38,12 @@ const menuItems: MenuItem[] = [
 ];
 
 export function AppLayout() {
+  const navigate = useNavigate();
+
   const [collapsed, setCollapsed] = useState(false);
   const [showSidebarText, setShowSidebarText] = useState(true);
 
   const { user, logout } = useAuth();
-
-  function handleLogout() {
-    const navigate = useNavigate();
-    logout();
-    navigate('/login', { replace: true })
-  }
 
   useEffect(() => {
     if (collapsed) {
@@ -62,6 +58,11 @@ export function AppLayout() {
     return () => window.clearTimeout(timeout);
   }, [collapsed]);
 
+  function handleLogout() {
+    logout();
+    navigate('/login', { replace: true });
+  }
+
   function collapseSidebar() {
     setShowSidebarText(false);
     setCollapsed(true);
@@ -73,21 +74,24 @@ export function AppLayout() {
 
   const visibleMenuItems = menuItems.filter((item) => {
     if (!item.adminOnly) return true;
+
     return user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN';
   });
 
   return (
     <div className="min-h-screen bg-evtag-bg font-sans text-evtag-text">
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-screen flex-col overflow-hidden bg-evtag-primary text-white transition-[width] duration-300 ease-out ${collapsed ? 'w-20' : 'w-72'
-          }`}
+        className={`fixed left-0 top-0 z-40 flex h-screen flex-col overflow-hidden bg-evtag-primary text-white transition-[width] duration-300 ease-out ${
+          collapsed ? 'w-20' : 'w-72'
+        }`}
       >
         <div className="flex h-20 shrink-0 items-center justify-between px-5">
           {!collapsed ? (
             <>
               <div
-                className={`min-w-0 overflow-hidden transition-opacity duration-150 ${showSidebarText ? 'opacity-100' : 'opacity-0'
-                  }`}
+                className={`min-w-0 overflow-hidden transition-opacity duration-150 ${
+                  showSidebarText ? 'opacity-100' : 'opacity-0'
+                }`}
               >
                 <h1 className="whitespace-nowrap font-display text-2xl font-black tracking-tight">
                   EvTag
@@ -125,10 +129,12 @@ export function AppLayout() {
                 to={item.path}
                 title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
-                  `flex h-12 items-center gap-3 rounded-2xl text-sm font-semibold transition-colors ${collapsed ? 'justify-center px-0' : 'px-4'
-                  } ${isActive
-                    ? 'bg-white text-evtag-primary shadow-lg'
-                    : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  `flex h-12 items-center gap-3 rounded-2xl text-sm font-semibold transition-colors ${
+                    collapsed ? 'justify-center px-0' : 'px-4'
+                  } ${
+                    isActive
+                      ? 'bg-white text-evtag-primary shadow-lg'
+                      : 'text-white/70 hover:bg-white/10 hover:text-white'
                   }`
                 }
               >
@@ -136,8 +142,9 @@ export function AppLayout() {
 
                 {!collapsed ? (
                   <span
-                    className={`min-w-0 truncate whitespace-nowrap transition-opacity duration-150 ${showSidebarText ? 'opacity-100' : 'opacity-0'
-                      }`}
+                    className={`min-w-0 truncate whitespace-nowrap transition-opacity duration-150 ${
+                      showSidebarText ? 'opacity-100' : 'opacity-0'
+                    }`}
                   >
                     {item.label}
                   </span>
@@ -151,15 +158,17 @@ export function AppLayout() {
           <button
             type="button"
             onClick={handleLogout}
-            className={`flex h-12 w-full items-center gap-3 rounded-2xl text-sm font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white ${collapsed ? 'justify-center px-0' : 'px-4'
-              }`}
+            className={`flex h-12 w-full items-center gap-3 rounded-2xl text-sm font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white ${
+              collapsed ? 'justify-center px-0' : 'px-4'
+            }`}
           >
             <LogOut size={20} className="shrink-0" />
 
             {!collapsed ? (
               <span
-                className={`whitespace-nowrap transition-opacity duration-150 ${showSidebarText ? 'opacity-100' : 'opacity-0'
-                  }`}
+                className={`whitespace-nowrap transition-opacity duration-150 ${
+                  showSidebarText ? 'opacity-100' : 'opacity-0'
+                }`}
               >
                 Sair
               </span>
@@ -169,8 +178,9 @@ export function AppLayout() {
       </aside>
 
       <main
-        className={`min-h-screen transition-[padding-left] duration-300 ease-out ${collapsed ? 'pl-20' : 'pl-72'
-          }`}
+        className={`min-h-screen transition-[padding-left] duration-300 ease-out ${
+          collapsed ? 'pl-20' : 'pl-72'
+        }`}
       >
         <header className="sticky top-0 z-30 border-b border-evtag-border/70 bg-evtag-bg/85 backdrop-blur-xl">
           <div className="flex h-16 items-center justify-end gap-3 px-8">
