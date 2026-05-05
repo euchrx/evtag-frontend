@@ -89,30 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.defaults.headers.common.Authorization = `Bearer ${nextToken}`;
 
       if (nextUser.role === 'SUPER_ADMIN') {
-        const currentSelectedCompanyId =
-          selectedCompanyId ?? localStorage.getItem(SELECTED_COMPANY_KEY);
-
-        if (currentSelectedCompanyId) {
-          localStorage.setItem(SELECTED_COMPANY_KEY, currentSelectedCompanyId);
-          api.defaults.headers.common['x-company-id'] = currentSelectedCompanyId;
-          setSelectedCompanyIdState(currentSelectedCompanyId);
-        } else {
-          localStorage.removeItem(SELECTED_COMPANY_KEY);
-          delete api.defaults.headers.common['x-company-id'];
-          setSelectedCompanyIdState(null);
-        }
-      } else {
-        const companyId = nextUser.companyId ?? null;
-
-        if (companyId) {
-          localStorage.setItem(SELECTED_COMPANY_KEY, companyId);
-          api.defaults.headers.common['x-company-id'] = companyId;
-          setSelectedCompanyIdState(companyId);
-        } else {
-          localStorage.removeItem(SELECTED_COMPANY_KEY);
-          delete api.defaults.headers.common['x-company-id'];
-          setSelectedCompanyIdState(null);
-        }
+        localStorage.removeItem(SELECTED_COMPANY_KEY);
+        delete api.defaults.headers.common['x-company-id'];
+        setSelectedCompanyIdState(null);
       }
 
       setToken(nextToken);

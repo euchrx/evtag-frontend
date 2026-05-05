@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -15,7 +16,11 @@ type SuperAdminCompanySelectorProps = {
 export function SuperAdminCompanySelector({
   compact = false,
 }: SuperAdminCompanySelectorProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const { user, selectedCompanyId, setSelectedCompanyId } = useAuth();
+
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -41,10 +46,6 @@ export function SuperAdminCompanySelector({
         const activeCompanies = data.filter((company) => company.isActive);
 
         setCompanies(activeCompanies);
-
-        if (!selectedCompanyId && activeCompanies.length > 0) {
-          setSelectedCompanyId(activeCompanies[0].id);
-        }
       } catch (error: any) {
         if (!isMounted) return;
 
@@ -65,17 +66,21 @@ export function SuperAdminCompanySelector({
     return () => {
       isMounted = false;
     };
-  }, [user?.role, setSelectedCompanyId]);
+  }, [user?.role]);
 
   function handleChange(companyId: string) {
-    setSelectedCompanyId(companyId || null);
+    const nextCompanyId = companyId || null;
 
-    // força as páginas dependentes a recarregarem com novo escopo
-    window.dispatchEvent(
-      new CustomEvent('evtag:company-scope-changed', {
-        detail: { companyId: companyId || null },
-      }),
-    );
+    setSelectedCompanyId(nextCompanyId);
+
+    if (!nextCompanyId) {
+      navigate('/admin', { replace: true });
+      return;
+    }
+
+    if (location.pathname === '/admin' || location.pathname === '/') {
+      navigate('/dashboard', { replace: true });
+    }
   }
 
   if (user?.role !== 'SUPER_ADMIN') {
@@ -98,9 +103,9 @@ export function SuperAdminCompanySelector({
         value={selectedCompanyId ?? ''}
         onChange={(event) => handleChange(event.target.value)}
         disabled={isLoading}
-        className="h-10 min-w-[220px] rounded-full border border-evtag-border bg-white px-4 text-sm font-medium text-evtag-text outline-none transition focus:border-evtag-primary disabled:cursor-not-allowed disabled:opacity-70"
+        className="h-10 min-w-[240px] rounded-full border border-evtag-border bg-white px-4 text-sm font-medium text-evtag-text outline-none transition focus:border-evtag-primary disabled:cursor-not-allowed disabled:opacity-70"
       >
-        <option value="">Selecionar empresa</option>
+        <option value="">Administração geral</option>
 
         {companies.map((company) => (
           <option key={company.id} value={company.id}>
@@ -110,7 +115,9 @@ export function SuperAdminCompanySelector({
       </select>
 
       {errorMessage ? (
-        <span className="text-xs text-red-600">{errorMessage}</span>
+        <span className="max-w-[260px] truncate text-xs text-red-600">
+          {errorMessage}
+        </span>
       ) : null}
     </div>
   );

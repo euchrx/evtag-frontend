@@ -13,6 +13,7 @@ import {
   Menu,
   LogOut,
   Utensils,
+  ServerCog,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { SuperAdminCompanySelector } from '../components/SuperAdminCompanySelector';
@@ -22,19 +23,78 @@ type MenuItem = {
   path: string;
   icon: React.ElementType;
   adminOnly?: boolean;
+  superAdminOnly?: boolean;
+  companyScoped?: boolean;
 };
 
 const menuItems: MenuItem[] = [
-  { label: 'Controlados', path: '/dashboard', icon: BarChart3 },
-  { label: 'Categorias', path: '/categories', icon: Tags },
-  { label: 'Produtos', path: '/items', icon: Package },
-  { label: 'Etiquetas', path: '/print', icon: Printer },
-  { label: 'Histórico', path: '/history', icon: History },
-  { label: 'Conferência', path: '/scan', icon: ScanLine },
-  { label: 'Cozinha', path: '/kitchen', icon: Utensils },
-  { label: 'Dispositivos', path: '/devices', icon: TabletSmartphone },
-  { label: 'Empresas', path: '/companies', icon: Building2, adminOnly: true },
-  { label: 'Usuários', path: '/users', icon: Users, adminOnly: true },
+  {
+    label: 'Administração',
+    path: '/admin',
+    icon: ServerCog,
+    superAdminOnly: true,
+  },
+  {
+    label: 'Controlados',
+    path: '/dashboard',
+    icon: BarChart3,
+    companyScoped: true,
+  },
+  {
+    label: 'Categorias',
+    path: '/categories',
+    icon: Tags,
+    companyScoped: true,
+  },
+  {
+    label: 'Produtos',
+    path: '/items',
+    icon: Package,
+    companyScoped: true,
+  },
+  {
+    label: 'Etiquetas',
+    path: '/print',
+    icon: Printer,
+    companyScoped: true,
+  },
+  {
+    label: 'Histórico',
+    path: '/history',
+    icon: History,
+    companyScoped: true,
+  },
+  {
+    label: 'Conferência',
+    path: '/scan',
+    icon: ScanLine,
+    companyScoped: true,
+  },
+  {
+    label: 'Cozinha',
+    path: '/kitchen',
+    icon: Utensils,
+    companyScoped: true,
+  },
+  {
+    label: 'Dispositivos',
+    path: '/devices',
+    icon: TabletSmartphone,
+    companyScoped: true,
+  },
+  {
+    label: 'Empresas',
+    path: '/companies',
+    icon: Building2,
+    adminOnly: true,
+  },
+  {
+    label: 'Usuários',
+    path: '/users',
+    icon: Users,
+    adminOnly: true,
+    companyScoped: true,
+  },
 ];
 
 export function AppLayout() {
@@ -43,7 +103,10 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [showSidebarText, setShowSidebarText] = useState(true);
 
-  const { user, logout } = useAuth();
+  const { user, logout, selectedCompanyId } = useAuth();
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const hasCompanyScope = !isSuperAdmin || Boolean(selectedCompanyId);
 
   useEffect(() => {
     if (collapsed) {
@@ -73,9 +136,18 @@ export function AppLayout() {
   }
 
   const visibleMenuItems = menuItems.filter((item) => {
-    if (!item.adminOnly) return true;
+    if (item.superAdminOnly && !isSuperAdmin) return false;
 
-    return user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN';
+    if (item.adminOnly) {
+      const allowed =
+        user?.role === 'SUPER_ADMIN' || user?.role === 'COMPANY_ADMIN';
+
+      if (!allowed) return false;
+    }
+
+    if (item.companyScoped && !hasCompanyScope) return false;
+
+    return true;
   });
 
   return (
