@@ -133,6 +133,16 @@ export function KitchenPage() {
 
   const hasDevice = Boolean(normalizeDeviceId(deviceId));
 
+  const deviceName = useMemo(() => {
+    const cleanResponsible = responsible.trim();
+
+    if (cleanResponsible) {
+      return `Tablet ${cleanResponsible}`;
+    }
+
+    return 'Tablet produção';
+  }, [responsible]);
+
   const statusUi = useMemo(() => {
     const map: Record<
       ProductionStatus,
@@ -231,6 +241,60 @@ export function KitchenPage() {
       setMessage('Configure o dispositivo para iniciar a operação');
     }
   }, [hasDevice]);
+
+  useEffect(() => {
+    const cleanDeviceId = normalizeDeviceId(deviceId);
+
+    if (!cleanDeviceId) return;
+
+    let cancelled = false;
+
+    async function sendHeartbeat() {
+      try {
+        await api.post(
+          '/mobile/devices/heartbeat',
+          {
+            deviceId: cleanDeviceId,
+            name: deviceName,
+          },
+          {
+            headers: {
+              'x-device-id': cleanDeviceId,
+            },
+            params: {
+              deviceId: cleanDeviceId,
+            },
+          },
+        );
+
+        if (!cancelled) {
+          setStatus((current) => (current === 'device_error' ? 'idle' : current));
+          setMessage((current) =>
+            current === 'Configure o dispositivo para iniciar a operação' ||
+              current === 'Configure o dispositivo'
+              ? 'Aguardando leitura'
+              : current,
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStatus('device_error');
+          setMessage(getErrorMessage(error, 'Falha ao registrar dispositivo'));
+        }
+      }
+    }
+
+    void sendHeartbeat();
+
+    const interval = window.setInterval(() => {
+      void sendHeartbeat();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [deviceId, deviceName]);
 
   function focusInput() {
     window.setTimeout(() => inputRef.current?.focus(), 60);
